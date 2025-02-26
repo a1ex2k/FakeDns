@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "FakeDns": {
+      "commandName": "Project",
+      "commandLineArgs": "\"D:\\Desktop\\New folder\\fake-domains.list\" 127.0.0.1 53 54"
+    }
+  }
+}
