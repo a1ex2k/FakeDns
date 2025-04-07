@@ -41,7 +41,7 @@ func (m *FakeIPManager) GetFakeIP(domain string, realIP net.IP, force bool) (net
 	realIPStr := realIP.String()
 
 	// 1. Check if domain should be faked
-	if !force || !m.isTargetDomain(domain) {
+	if !force && !m.isTargetDomain(domain) {
 		return nil, false
 	}
 
