@@ -1,4 +1,4 @@
-package main
+package fakedns
 
 import (
 	"log"
@@ -9,14 +9,16 @@ import (
 	"github.com/miekg/dns" // DNS library
 )
 
-type dnsHandler struct {
+type DnsHandler struct {
 	upstreamAddr  string
+	domainsList   *DomainsList
 	fakeIPManager *FakeIPManager
 	forceFakeAll  bool
 	logPrefix     string
+	maxLevel      int
 }
 
-func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+func (h *DnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	c := new(dns.Client)
 	c.Timeout = 5 * time.Second
 
@@ -37,36 +39,32 @@ func (h *dnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 	for _, rr := range resp.Answer {
 		newRR := dns.Copy(rr)
-
 		var domain string
 		var realIP net.IP
 		var isA, isAAAA bool
 		var aRec *dns.A
 		var aaaaRec *dns.AAAA
-		var shouldFake bool
-		var fakeIP net.IP
-
+		version := 4
 		if aRec, isA = newRR.(*dns.A); isA {
 			domain = strings.ToLower(strings.TrimSuffix(aRec.Hdr.Name, "."))
 			realIP = aRec.A
 		} else if aaaaRec, isAAAA = newRR.(*dns.AAAA); isAAAA {
 			domain = strings.ToLower(strings.TrimSuffix(aaaaRec.Hdr.Name, "."))
 			realIP = aaaaRec.AAAA
+			version = 6
 		}
 
-		if isA || isAAAA {
-			fakeIP, shouldFake = h.fakeIPManager.GetFakeIP(domain, realIP, h.forceFakeAll)
-			if shouldFake {
-				log.Printf("%s Faking IP for %s: %s -> %s", h.logPrefix, domain, realIP, fakeIP)
-				if isA {
-					aRec.A = fakeIP
-				} else {
-					aaaaRec.AAAA = fakeIP
-				}
-				newRR.Header().Ttl = fakedRecordTTL
+		shouldFake := (isA || isAAAA) && (h.forceFakeAll || h.domainsList.MatchDomain(domain, h.maxLevel))
+		if shouldFake {
+			fakeIP := h.fakeIPManager.GetFakeIP(domain, realIP, version)
+			log.Printf("%s Faking IP for %s: %s -> %s", h.logPrefix, domain, realIP, fakeIP)
+			if isA {
+				aRec.A = fakeIP
+			} else {
+				aaaaRec.AAAA = fakeIP
 			}
+			newRR.Header().Ttl = fakedRecordTTL
 		}
-
 		out.Answer = append(out.Answer, newRR)
 	}
 

@@ -1,4 +1,4 @@
-package main
+package fakedns
 
 import (
 	"fmt"
@@ -41,20 +41,20 @@ func main() {
 		return
 	}
 
-	targetDomains, err := loadDomains(domainsFilePath)
+	targetDomains, _ := DomainsListFromFile(domainsFilePath)
 	if err != nil {
 		log.Fatalf("Failed to load domains: %v", err)
 	}
 
-	if err := setupNftables(); err != nil {
+	if err := SetupNftables(); err != nil {
 		log.Printf("ERROR: Initial nftables setup failed: %v.", err)
 	}
 
-	fakeIPManager := NewFakeIPManager(targetDomains, addNftRule)
-
-	handler := &dnsHandler{
+	fakeIPManager := NewFakeIPManager(AddDnat4Rule, AddDnat6Rule)
+	handler := &DnsHandler{
 		upstreamAddr:  upstreamDNSServer,
 		fakeIPManager: fakeIPManager,
+		domainsList:   targetDomains,
 	}
 	udpServer := &dns.Server{
 		Addr:    fmt.Sprintf("%s:%d", listenIP.String(), port),
@@ -63,9 +63,9 @@ func main() {
 		UDPSize: maxUDPSize,
 	}
 
-	catchAllHandler := &dnsHandler{
+	catchAllHandler := &DnsHandler{
 		upstreamAddr:  upstreamDNSServer,
-		fakeIPManager: fakeIPManager,
+		fakeIPManager: nil,
 		forceFakeAll:  true,
 	}
 	catchAllUdpServer := &dns.Server{
@@ -93,7 +93,6 @@ func main() {
 		}
 	}()
 
-	// Wait for either a shutdown signal or a failure
 	select {
 	case <-sigs:
 	case err := <-serverFailed:
@@ -104,6 +103,6 @@ func main() {
 		}
 	}
 
-	cleanupNftables()
+	CleanupNftables()
 	log.Println("FakeDNS Go application finished.")
 }

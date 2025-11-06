@@ -1,4 +1,4 @@
-package main
+package fakedns
 
 import (
 	"fmt"
@@ -9,14 +9,8 @@ import (
 	"strings"
 )
 
-func runNftCommand(args ...string) error {
-	if runtime.GOOS != "linux" {
-		log.Printf("Skipping nftables command on %s OS: nft %s", runtime.GOOS, strings.Join(args, " "))
-		return nil
-	}
-
+func RunNftCommand(args ...string) error {
 	cmd := exec.Command("nft", args...)
-	log.Printf("Running command: nft %s", strings.Join(args, " "))
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
@@ -29,10 +23,10 @@ func runNftCommand(args ...string) error {
 	return nil
 }
 
-func setupNftables() error {
+func SetupNftables() error {
 	log.Println("Attempting nftables setup...")
 
-	err := runNftCommand("add", "table", nftTableName)
+	err := RunNftCommand("add table", nftTableName)
 	if err != nil && runtime.GOOS == "linux" {
 		if !strings.Contains(err.Error(), "exists") {
 			return fmt.Errorf("failed to add nft table: %w", err)
@@ -41,7 +35,7 @@ func setupNftables() error {
 	}
 
 	chainSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
-	err = runNftCommand("add", "chain", nftTableName, nftChainName, "{", chainSpec, ";", "}")
+	err = RunNftCommand("add", "chain", nftTableName, nftChainName, "{", chainSpec, ";", "}")
 	if err != nil && runtime.GOOS == "linux" {
 		if !strings.Contains(err.Error(), "exists") {
 			return fmt.Errorf("failed to add nft chain: %w", err)
@@ -53,27 +47,27 @@ func setupNftables() error {
 	return nil
 }
 
-func addNftRule(realIP, fakeIP net.IP) error {
-	var addrFamily string
-	if realIP.To4() != nil && fakeIP.To4() != nil {
-		addrFamily = "ip"
-	} else if realIP.To16() != nil && fakeIP.To16() != nil && realIP.To4() == nil && fakeIP.To4() == nil {
-		addrFamily = "ip6"
-	} else {
-		return fmt.Errorf("mismatched or invalid IP address families: real=%s fake=%s", realIP, fakeIP)
-	}
-
+func AddDnat4Rule(realIP, fakeIP net.IP) error {
 	ruleArgs := []string{
-		"add", "rule", nftTableName, nftChainName,
-		addrFamily, "daddr", fakeIP.String(),
-		"dnat", "to", realIP.String(),
+		"add rule", nftTableName, nftChainName,
+		"ip daddr", fakeIP.String(),
+		"dnat to", realIP.String(),
 	}
-	return runNftCommand(ruleArgs...)
+	return RunNftCommand(ruleArgs...)
 }
 
-func cleanupNftables() error {
+func AddDnat6Rule(realIP, fakeIP net.IP) error {
+	ruleArgs := []string{
+		"add rule", nftTableName, nftChainName,
+		"ip6 daddr", fakeIP.String(),
+		"dnat to", realIP.String(),
+	}
+	return RunNftCommand(ruleArgs...)
+}
+
+func CleanupNftables() error {
 	log.Println("Attempting nftables cleanup...")
-	err := runNftCommand("delete", "table", nftTableName)
+	err := RunNftCommand("delete table", nftTableName)
 
 	if err != nil && runtime.GOOS == "linux" {
 		log.Printf("Warning: Failed to delete nftables table '%s': %v", nftTableName, err)
