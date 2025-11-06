@@ -1,4 +1,4 @@
-package fakedns
+package main
 
 import (
 	"bufio"

@@ -1,75 +1,75 @@
-package fakedns
+package main
 
 import (
-	"fmt"
+	"flag"
 	"log"
 	"net"
 	"os"
 	"os/signal"
-	"runtime"
-	"strconv"
 	"syscall"
 
 	"github.com/miekg/dns"
 )
 
 func main() {
-	log.Printf("Starting FakeDNS Go application on %s...", runtime.GOOS)
+	domainsFile := flag.String("domains", "", "Path to the domains file")
+	listenIPStr := flag.String("listen", "127.0.0.1", "IP address to listen on [127.0.0.1]")
+	port := flag.String("port", "50053", "Port for FakeDNS to listen on [50053]")
+	catchAllPort := flag.String("catch-all-port", "50054", "Port for aking all DNS requests [50054]")
+	upstreamResolver := flag.String("upstream", "8.8.8.8:53", "Upstream DNS resolver (host:port) [8.8.8.8:53]")
 
-	if len(os.Args) < 4 {
-		log.Fatalf("Usage: %s <domains_file> <listen_ip> <port> <catch_all_port>", os.Args[0])
+	flag.Parse()
+	if *domainsFile == "" {
+		log.Fatal("Error: --domains parameter is required\n\n")
+		flag.Usage()
+		os.Exit(1)
 	}
-	domainsFilePath := os.Args[1]
-	listenIPStr := os.Args[2]
-	portStr := os.Args[3]
-	catchAllPortStr := os.Args[4]
 
-	listenIP := net.ParseIP(listenIPStr)
+	listenIP := net.ParseIP(*listenIPStr)
 	if listenIP == nil {
-		log.Fatalf("Invalid listen IP address provided: %s", listenIPStr)
+		log.Fatalf("Invalid listen IP address provided: %s", *listenIPStr)
 	}
 
-	port, err := strconv.ParseUint(portStr, 10, 16)
-	if err != nil {
-		log.Fatalf("Invalid listen port provided: %s", portStr)
-		return
-	}
-
-	catchAllPort, err := strconv.ParseUint(catchAllPortStr, 10, 16)
-	if err != nil {
-		log.Fatalf("Invalid listen port provided: %s", catchAllPortStr)
-		return
-	}
-
-	targetDomains, _ := DomainsListFromFile(domainsFilePath)
+	// --- Load domain list ---
+	targetDomains, err := DomainsListFromFile(*domainsFile)
 	if err != nil {
 		log.Fatalf("Failed to load domains: %v", err)
 	}
+
+	log.Printf("Listen address:    %s:%d", listenIP, *port)
+	log.Printf("Catch-all port:    %d", *catchAllPort)
+	log.Printf("Upstream resolver: %s", *upstreamResolver)
 
 	if err := SetupNftables(); err != nil {
 		log.Printf("ERROR: Initial nftables setup failed: %v.", err)
 	}
 
 	fakeIPManager := NewFakeIPManager(AddDnat4Rule, AddDnat6Rule)
+	dnsClient := &dns.Client{Net: "udp"}
+
 	handler := &DnsHandler{
-		upstreamAddr:  upstreamDNSServer,
+		upstreamAddr:  *upstreamResolver,
 		fakeIPManager: fakeIPManager,
 		domainsList:   targetDomains,
+		forceFakeAll:  false,
+		dnsClient:     dnsClient,
 	}
 	udpServer := &dns.Server{
-		Addr:    fmt.Sprintf("%s:%d", listenIP.String(), port),
+		Addr:    listenIP.String() + ":" + *port,
 		Net:     "udp",
 		Handler: handler,
 		UDPSize: maxUDPSize,
 	}
 
 	catchAllHandler := &DnsHandler{
-		upstreamAddr:  upstreamDNSServer,
-		fakeIPManager: nil,
+		upstreamAddr:  *upstreamResolver,
+		fakeIPManager: fakeIPManager,
+		domainsList:   nil,
 		forceFakeAll:  true,
+		dnsClient:     dnsClient,
 	}
 	catchAllUdpServer := &dns.Server{
-		Addr:    fmt.Sprintf("%s:%d", listenIP.String(), catchAllPort),
+		Addr:    listenIP.String() + ":" + *catchAllPort,
 		Net:     "udp",
 		Handler: catchAllHandler,
 		UDPSize: maxUDPSize,
