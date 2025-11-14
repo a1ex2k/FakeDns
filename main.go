@@ -3,42 +3,26 @@ package main
 import (
 	"flag"
 	"log"
-	"net"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	"github.com/miekg/dns"
 )
 
 func main() {
-	domainsFile := flag.String("domains", "", "Path to the domains file")
-	listenIPStr := flag.String("listen", "127.0.0.1", "IP address to listen on [127.0.0.1]")
-	port := flag.String("port", "50053", "Port for FakeDNS to listen on [50053]")
-	catchAllPort := flag.String("catch-all-port", "50054", "Port for aking all DNS requests [50054]")
-	upstreamResolver := flag.String("upstream", "8.8.8.8:53", "Upstream DNS resolver (host:port) [8.8.8.8:53]")
+	domainsFile := flag.String("domains", defaultDomainsFile, "Path to the domains file")
+	listenIPStr := flag.String("listen", defaultListenIp, "IP address to listen on")
+	port := flag.Int("port", defaultListenPort, "Port for FakeDNS to listen on")
+	catchAllPort := flag.Int("catch-all-port", defaultCatchAllPort, "Port for faking all DNS requests")
+	upstreamResolver := flag.String("upstream", defaultUpstream, "Upstream DNS resolver (host:port)")
 
 	flag.Parse()
-	if *domainsFile == "" {
-		log.Fatal("Error: --domains parameter is required\n\n")
-		flag.Usage()
-		os.Exit(1)
-	}
 
-	listenIP := net.ParseIP(*listenIPStr)
-	if listenIP == nil {
-		log.Fatalf("Invalid listen IP address provided: %s", *listenIPStr)
-	}
-
-	// --- Load domain list ---
-	targetDomains, err := DomainsListFromFile(*domainsFile)
-	if err != nil {
-		log.Fatalf("Failed to load domains: %v", err)
-	}
-
-	log.Printf("Listen address:    %s:%d", listenIP, *port)
-	log.Printf("Catch-all port:    %d", *catchAllPort)
-	log.Printf("Upstream resolver: %s", *upstreamResolver)
+	log.Printf("Domains file:   %s", *domainsFile)
+	log.Printf("Listen address: %s:%d (catch-all on :%d)", *listenIPStr, *port, *catchAllPort)
+	log.Printf("Upstream DNS:   %s", *upstreamResolver)
 
 	if err := SetupNftables(); err != nil {
 		log.Printf("ERROR: Initial nftables setup failed: %v.", err)
@@ -47,15 +31,20 @@ func main() {
 	fakeIPManager := NewFakeIPManager(AddDnat4Rule, AddDnat6Rule)
 	dnsClient := &dns.Client{Net: "udp"}
 
+	domainsList, err := DomainsListFromFile(*domainsFile)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to load initial domains file: %v", err)
+	}
+
 	handler := &DnsHandler{
 		upstreamAddr:  *upstreamResolver,
 		fakeIPManager: fakeIPManager,
-		domainsList:   targetDomains,
+		domainsList:   domainsList,
 		forceFakeAll:  false,
 		dnsClient:     dnsClient,
 	}
 	udpServer := &dns.Server{
-		Addr:    listenIP.String() + ":" + *port,
+		Addr:    *listenIPStr + ":" + strconv.Itoa(*port),
 		Net:     "udp",
 		Handler: handler,
 		UDPSize: maxUDPSize,
@@ -69,17 +58,18 @@ func main() {
 		dnsClient:     dnsClient,
 	}
 	catchAllUdpServer := &dns.Server{
-		Addr:    listenIP.String() + ":" + *catchAllPort,
+		Addr:    *listenIPStr + ":" + strconv.Itoa(*catchAllPort),
 		Net:     "udp",
 		Handler: catchAllHandler,
 		UDPSize: maxUDPSize,
 	}
 
-	log.Printf("Starting FakeDNS server on %s, ports %d and %d", listenIP, port, catchAllPort)
+	log.Printf("Starting FakeDNS server on %s, ports %d and %d", *listenIPStr, *port, *catchAllPort)
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 	serverFailed := make(chan error, 2)
+
 	go func() {
 		if err := udpServer.ListenAndServe(); err != nil {
 			log.Printf("Failed to start server: %v", err)
@@ -93,16 +83,28 @@ func main() {
 		}
 	}()
 
-	select {
-	case <-sigs:
-	case err := <-serverFailed:
-		log.Printf("Server failed to start: %v. Initiating shutdown...", err)
+	for {
 		select {
-		case sigs <- syscall.SIGTERM:
-		default:
+		case sig := <-sigs:
+			switch sig {
+			case syscall.SIGHUP:
+				log.Println("SIGHUP received, reloading domains list...")
+				if err := domainsList.Load(); err != nil {
+					log.Printf("ERROR: Failed to reload domains file: %v", err)
+				} else {
+					log.Println("Domains list reloaded successfully.")
+				}
+			case syscall.SIGINT, syscall.SIGTERM:
+				log.Println("Shutdown signal received, cleaning up...")
+				CleanupNftables()
+				log.Println("FakeDNS Go application finished.")
+				return
+			}
+		case err := <-serverFailed:
+			log.Printf("Server failed: %v. Initiating shutdown...", err)
+			CleanupNftables()
+			log.Println("FakeDNS Go application finished.")
+			return
 		}
 	}
-
-	CleanupNftables()
-	log.Println("FakeDNS Go application finished.")
 }

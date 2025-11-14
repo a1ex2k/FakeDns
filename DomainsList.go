@@ -6,20 +6,19 @@ import (
 	"log"
 	"os"
 	"strings"
+	"sync"
 )
 
 type DomainsList struct {
 	targetDomains map[string]struct{}
+	filePath      string
+	mu            sync.RWMutex
 }
 
-func DomainsListFromMap(domains map[string]struct{}) *DomainsList {
-	return &DomainsList{targetDomains: domains}
-}
-
-func DomainsListFromFile(filePath string) (*DomainsList, error) {
-	file, err := os.Open(filePath)
+func (d *DomainsList) Load() error {
+	file, err := os.Open(d.filePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open domains file '%s': %w", filePath, err)
+		return fmt.Errorf("failed to open domains file '%s': %w", d.filePath, err)
 	}
 	defer file.Close()
 
@@ -50,19 +49,43 @@ func DomainsListFromFile(filePath string) (*DomainsList, error) {
 	}
 
 	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error reading domains file '%s': %w", filePath, err)
+		return fmt.Errorf("error reading domains file '%s': %w", d.filePath, err)
 	}
 
-	if len(domains) == 0 {
-		log.Printf("Warning: No domains loaded from '%s'", filePath)
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.targetDomains = domains
+	if len(d.targetDomains) == 0 {
+		log.Printf("Warning: No domains loaded from '%s'", d.filePath)
 	} else {
-		log.Printf("Loaded %d target domains from '%s'", len(domains), filePath)
+		log.Printf("Loaded %d target domains from '%s'", len(d.targetDomains), d.filePath)
 	}
 
-	return &DomainsList{targetDomains: domains}, nil
+	return nil
+}
+
+func DomainsListFromFile(filePath string) (*DomainsList, error) {
+	d := &DomainsList{
+		targetDomains: make(map[string]struct{}),
+		filePath:      filePath,
+	}
+
+	if err := d.Load(); err != nil {
+		return nil, err
+	}
+
+	return d, nil
 }
 
 func (d *DomainsList) MatchDomain(queryDomain string, maxLevel int) bool {
+	if d == nil {
+		return false
+	}
+
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
 	queryDomain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(queryDomain), "."))
 	parts := strings.Split(queryDomain, ".")
 	n := len(parts)
