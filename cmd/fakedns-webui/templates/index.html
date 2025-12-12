@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <title>FakeDNS WebUI</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
@@ -15,9 +15,11 @@
 {{end}}
 
 <form class="row" method="POST" action="/add">
-    <input name="domain" placeholder="example.com" required>
+    <label for="domains">Domains (one per line)</label>
+    <textarea name="domains" rows="6" placeholder="example2.com&#10;example3.com" required> </textarea>
     <button type="submit">Add</button>
 </form>
+
 
 <div class="list">
     <h2>Domains ({{len .Domains}})</h2>

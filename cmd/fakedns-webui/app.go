@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"net/http"
 	"strings"
 )
@@ -69,31 +68,34 @@ func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domain := NormalizeDomain(r.FormValue("domain"))
-	if domain == "" {
-		http.Redirect(w, r, "/?msg=Empty+domain", http.StatusSeeOther)
-		return
-	}
-	if strings.ContainsAny(domain, " \t\r\n/") {
-		http.Redirect(w, r, "/?msg=Invalid+domain", http.StatusSeeOther)
+	raw := r.FormValue("domains")
+	domains := splitDomains(raw)
+
+	if len(domains) == 0 {
+		http.Redirect(w, r, "/?msg=Empty", http.StatusSeeOther)
 		return
 	}
 
-	if err := a.store.Add(domain); err != nil {
-		if errors.Is(err, ErrAlreadyExists) {
-			http.Redirect(w, r, "/?msg=Already+exists", http.StatusSeeOther)
-			return
-		}
+	added, skipped, err := a.store.AddMany(domains)
+	if err != nil {
 		http.Redirect(w, r, "/?msg=Add+failed", http.StatusSeeOther)
 		return
 	}
 
-	if err := a.reload.Reload(); err != nil {
-		http.Redirect(w, r, "/?msg=Added,+but+reload+failed", http.StatusSeeOther)
-		return
+	// reload только если реально что-то добавили
+	if added > 0 {
+		if err := a.reload.Reload(); err != nil {
+			http.Redirect(w, r, "/?msg=Added,+but+reload+failed", http.StatusSeeOther)
+			return
+		}
 	}
 
-	http.Redirect(w, r, "/?msg=Added", http.StatusSeeOther)
+	// пока простое сообщение (позже улучшим)
+	if added == 0 && skipped > 0 {
+		http.Redirect(w, r, "/?msg=No+changes", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/?msg=Done", http.StatusSeeOther)
 }
 
 func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -124,4 +126,29 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.Redirect(w, r, "/?msg=Deleted", http.StatusSeeOther)
+}
+
+func splitDomains(raw string) []string {
+	lines := strings.Split(raw, "\n")
+
+	seen := make(map[string]struct{})
+	out := make([]string, 0, len(lines))
+
+	for _, line := range lines {
+		d := NormalizeDomain(line)
+		if d == "" {
+			continue
+		}
+		// очень базовая фильтрация мусора
+		if strings.ContainsAny(d, " \t\r\n/") {
+			continue
+		}
+		if _, ok := seen[d]; ok {
+			continue
+		}
+		seen[d] = struct{}{}
+		out = append(out, d)
+	}
+
+	return out
 }

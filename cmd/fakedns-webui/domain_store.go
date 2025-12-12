@@ -2,14 +2,12 @@ package main
 
 import (
 	"bufio"
-	"errors"
+	"log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 )
-
-// Ошибка, если домен уже существует
-var ErrAlreadyExists = errors.New("domain already exists")
 
 // DomainStore — file-backed хранилище доменов
 type DomainStore struct {
@@ -28,23 +26,44 @@ func (s *DomainStore) List() ([]string, error) {
 	return readDomains(s.path)
 }
 
-// Add — добавить домен (с проверкой на дубликаты)
-func (s *DomainStore) Add(domain string) error {
+// AddMany добавляет сразу несколько доменов под одним mutex.
+// Возвращает (added, skipped, err)
+func (s *DomainStore) AddMany(domains []string) (int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	domains, err := readDomains(s.path)
+	current, err := readDomains(s.path)
 	if err != nil {
-		return err
+		return 0, 0, err
 	}
+
+	exists := make(map[string]struct{}, len(current))
+	for _, d := range current {
+		exists[NormalizeDomain(d)] = struct{}{}
+	}
+
+	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer closeAndLog(f)
+
+	added := 0
+	skipped := 0
 
 	for _, d := range domains {
-		if NormalizeDomain(d) == domain {
-			return ErrAlreadyExists
+		if _, ok := exists[d]; ok {
+			skipped++
+			continue
 		}
+		if _, err := f.WriteString(d + "\n"); err != nil {
+			return added, skipped, err
+		}
+		exists[d] = struct{}{}
+		added++
 	}
 
-	return appendDomain(s.path, domain)
+	return added, skipped, nil
 }
 
 // Delete — удалить домен
@@ -91,7 +110,7 @@ func readDomains(path string) ([]string, error) {
 		}
 		return nil, err
 	}
-	defer f.Close()
+	defer closeAndLog(f)
 
 	var res []string
 	sc := bufio.NewScanner(f)
@@ -107,23 +126,12 @@ func readDomains(path string) ([]string, error) {
 	return res, sc.Err()
 }
 
-func appendDomain(path, domain string) error {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	_, err = f.WriteString(domain + "\n")
-	return err
-}
-
 func writeDomains(path string, domains []string) error {
 	f, err := os.OpenFile(path, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0644)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer closeAndLog(f)
 
 	for _, d := range domains {
 		if _, err := f.WriteString(d + "\n"); err != nil {
@@ -138,4 +146,22 @@ func NormalizeDomain(s string) string {
 	s = strings.TrimSuffix(s, ".")
 	s = strings.ToLower(s)
 	return s
+}
+
+func closeAndLog(f *os.File) {
+	if err := f.Close(); err != nil {
+		fn := callerName(1)
+		log.Printf("file close error (%s): %v", fn, err)
+	}
+}
+
+func callerName(skip int) string {
+	pc, _, _, ok := runtime.Caller(skip + 1)
+	if !ok {
+		return "unknown"
+	}
+	if fn := runtime.FuncForPC(pc); fn != nil {
+		return fn.Name()
+	}
+	return "unknown"
 }
