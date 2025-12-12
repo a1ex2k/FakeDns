@@ -26,44 +26,95 @@ func (s *DomainStore) List() ([]string, error) {
 	return readDomains(s.path)
 }
 
-// AddMany добавляет сразу несколько доменов под одним mutex.
-// Возвращает (added, skipped, err)
-func (s *DomainStore) AddMany(domains []string) (int, int, error) {
+// MergeMany добавляет домены с дедупликацией по "родитель покрывает поддомены".
+// Возвращает (added, skipped, removedSubdomains, err).
+func (s *DomainStore) MergeMany(in []string) (int, int, int, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	current, err := readDomains(s.path)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, 0, err
 	}
 
-	exists := make(map[string]struct{}, len(current))
+	// Нормализуем текущее в set + slice (без дублей)
+	cur := make([]string, 0, len(current))
+	curSet := make(map[string]struct{}, len(current))
 	for _, d := range current {
-		exists[NormalizeDomain(d)] = struct{}{}
+		nd := NormalizeDomain(d)
+		if nd == "" {
+			continue
+		}
+		if _, ok := curSet[nd]; ok {
+			continue
+		}
+		curSet[nd] = struct{}{}
+		cur = append(cur, nd)
 	}
 
-	f, err := os.OpenFile(s.path, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return 0, 0, err
+	// Нормализуем вход и убираем дубли во входе
+	inSet := make(map[string]struct{}, len(in))
+	cleanIn := make([]string, 0, len(in))
+	for _, d := range in {
+		nd := NormalizeDomain(d)
+		if nd == "" {
+			continue
+		}
+		if _, ok := inSet[nd]; ok {
+			continue
+		}
+		inSet[nd] = struct{}{}
+		cleanIn = append(cleanIn, nd)
 	}
-	defer closeAndLog(f)
 
 	added := 0
 	skipped := 0
+	removed := 0
 
-	for _, d := range domains {
-		if _, ok := exists[d]; ok {
+	// 1) Отсеиваем входные, которые уже покрыты существующим родителем
+	toAdd := make([]string, 0, len(cleanIn))
+	for _, d := range cleanIn {
+		if isCoveredByParent(d, curSet) {
 			skipped++
 			continue
 		}
-		if _, err := f.WriteString(d + "\n"); err != nil {
-			return added, skipped, err
+		toAdd = append(toAdd, d)
+	}
+
+	// 2) Добавляем каждый новый домен:
+	//    - выкидываем из текущего списка все его поддомены
+	//    - добавляем домен
+	for _, d := range toAdd {
+		// удаляем поддомены d из cur
+		if len(cur) > 0 {
+			next := cur[:0]
+			for _, x := range cur {
+				if x != d && isSubdomainOf(x, d) {
+					delete(curSet, x)
+					removed++
+					continue
+				}
+				next = append(next, x)
+			}
+			cur = next
 		}
-		exists[d] = struct{}{}
+
+		// добавляем d
+		cur = append(cur, d)
+		curSet[d] = struct{}{}
 		added++
 	}
 
-	return added, skipped, nil
+	// Если вообще не было изменений — файл не трогаем
+	if added == 0 && removed == 0 {
+		return 0, skipped, 0, nil
+	}
+
+	if err := writeDomains(s.path, cur); err != nil {
+		return added, skipped, removed, err
+	}
+
+	return added, skipped, removed, nil
 }
 
 // Delete — удалить домен
@@ -146,6 +197,32 @@ func NormalizeDomain(s string) string {
 	s = strings.TrimSuffix(s, ".")
 	s = strings.ToLower(s)
 	return s
+}
+
+func isCoveredByParent(domain string, existing map[string]struct{}) bool {
+	// domain уже нормализован
+	if _, ok := existing[domain]; ok {
+		return true
+	}
+
+	// a.b.example.com -> b.example.com -> example.com -> com
+	for {
+		i := strings.IndexByte(domain, '.')
+		if i == -1 {
+			return false
+		}
+		domain = domain[i+1:]
+		if _, ok := existing[domain]; ok {
+			return true
+		}
+	}
+}
+
+func isSubdomainOf(child, parent string) bool {
+	if child == parent {
+		return true
+	}
+	return strings.HasSuffix(child, "."+parent)
 }
 
 func closeAndLog(f *os.File) {

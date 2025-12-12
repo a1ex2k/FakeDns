@@ -76,26 +76,28 @@ func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	added, skipped, err := a.store.AddMany(domains)
+	added, skipped, removed, err := a.store.MergeMany(domains)
 	if err != nil {
 		http.Redirect(w, r, "/?msg=Add+failed", http.StatusSeeOther)
 		return
 	}
 
-	// reload только если реально что-то добавили
-	if added > 0 {
+	// reload только если были изменения (added или removed)
+	if added > 0 || removed > 0 {
 		if err := a.reload.Reload(); err != nil {
-			http.Redirect(w, r, "/?msg=Added,+but+reload+failed", http.StatusSeeOther)
+			http.Redirect(w, r, "/?msg=Changed,+but+reload+failed", http.StatusSeeOther)
 			return
 		}
+		http.Redirect(w, r, "/?msg=Done", http.StatusSeeOther)
+		return
 	}
 
-	// пока простое сообщение (позже улучшим)
-	if added == 0 && skipped > 0 {
+	// изменений не было
+	if skipped > 0 {
 		http.Redirect(w, r, "/?msg=No+changes", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/?msg=Done", http.StatusSeeOther)
+	http.Redirect(w, r, "/?msg=No+changes", http.StatusSeeOther)
 }
 
 func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
