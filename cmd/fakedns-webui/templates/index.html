@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>FakeDNS WebUI</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<h1>FakeDNS WebUI</h1>
+
+{{if .Message}}
+<div class="msg">{{.Message}}</div>
+{{end}}
+
+<form class="row" method="POST" action="/add">
+    <input name="domain" placeholder="example.com" required>
+    <button type="submit">Add</button>
+</form>
+
+<div class="list">
+    <h2>Domains ({{len .Domains}})</h2>
+
+    {{range .Domains}}
+    <div class="item">
+        <div class="domain">{{.}}</div>
+        <form method="POST" action="/delete">
+            <input type="hidden" name="domain" value="{{.}}">
+            <button type="submit">Delete</button>
+        </form>
+    </div>
+    {{else}}
+    <p><em>No domains yet</em></p>
+    {{end}}
+</div>
+
+</body>
+</html>
