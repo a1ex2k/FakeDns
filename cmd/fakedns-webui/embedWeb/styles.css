@@ -170,6 +170,28 @@ h2 {
     word-break: break-word;
 }
 
+.search {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.search input[type="search"] {
+    width: 280px;
+    max-width: 42vw;
+    border-radius: 12px;
+    border: 1px solid var(--line);
+    background: rgba(255,255,255,0.02);
+    color: var(--text);
+    padding: 9px 12px;
+    outline: none;
+}
+
+.search input[type="search"]:focus {
+    border-color: rgba(110,168,254,0.55);
+    box-shadow: 0 0 0 3px rgba(110,168,254,0.18);
+}
+
 .actions {
     display: flex;
     gap: 8px;
