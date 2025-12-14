@@ -1,41 +1,40 @@
 package main
 
 import (
-	"html/template"
+	"embed"
+	"io/fs"
 	"net/http"
-	"path/filepath"
 )
 
+// Вшиваем весь Web UI в бинарь
+// Структура:
+// cmd/fakedns-webui/embedWeb/
+//
+//	index.html
+//	styles.css
+//	scripts.js
+//
+//go:embed embedWeb/*
+var embedWebFS embed.FS
+
 type UI struct {
-	tpl       *template.Template
-	staticDir string
+	handler http.Handler
 }
 
-type UIModel struct {
-	Domains []string
-	Message string
-}
-
-func NewUI(templatesDir, staticDir string) (*UI, error) {
-	indexPath := filepath.Join(templatesDir, "index.html")
-
-	tpl, err := template.ParseFiles(indexPath)
+func NewUI() (*UI, error) {
+	sub, err := fs.Sub(embedWebFS, "embedWeb")
 	if err != nil {
 		return nil, err
 	}
 
 	return &UI{
-		tpl:       tpl,
-		staticDir: staticDir,
+		handler: http.FileServer(http.FS(sub)),
 	}, nil
 }
 
-// StaticHandler раздаёт /static/* файлы (например styles.css)
-func (u *UI) StaticHandler() http.Handler {
-	return http.StripPrefix("/static/", http.FileServer(http.Dir(u.staticDir)))
-}
-
-// RenderIndex рендерит страницу index.html
-func (u *UI) RenderIndex(w http.ResponseWriter, model UIModel) error {
-	return u.tpl.Execute(w, model)
+// Handler возвращает HTTP-хендлер для Web UI
+// Обычно монтируется так:
+// mux.Handle("/ui/", http.StripPrefix("/ui/", ui.Handler()))
+func (u *UI) Handler() http.Handler {
+	return u.handler
 }

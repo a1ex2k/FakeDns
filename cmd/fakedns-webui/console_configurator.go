@@ -3,15 +3,12 @@ package main
 import (
 	"errors"
 	"flag"
-	"path/filepath"
 )
 
 type Config struct {
-	ListenAddr   string
-	DomainsPath  string
-	ServiceName  string
-	TemplatesDir string
-	StaticDir    string
+	ListenAddr  string
+	DomainsPath string
+	ServiceName string
 }
 
 func mustParseArgs() Config {
@@ -27,17 +24,6 @@ func parseArgs() (Config, error) {
 	domains := flag.String("domains", "", "path to fake-domains.list")
 	service := flag.String("service", "fakedns.service", "systemd service name")
 
-	templatesDir := flag.String(
-		"templates-dir",
-		filepath.Join("cmd", "fakedns-webui", "templates"),
-		"templates directory",
-	)
-	staticDir := flag.String(
-		"static-dir",
-		filepath.Join("cmd", "fakedns-webui", "static"),
-		"static files directory",
-	)
-
 	flag.Parse()
 
 	if *domains == "" {
@@ -45,10 +31,8 @@ func parseArgs() (Config, error) {
 	}
 
 	return Config{
-		ListenAddr:   *listen,
-		DomainsPath:  *domains,
-		ServiceName:  *service,
-		TemplatesDir: *templatesDir,
-		StaticDir:    *staticDir,
+		ListenAddr:  *listen,
+		DomainsPath: *domains,
+		ServiceName: *service,
 	}, nil
 }

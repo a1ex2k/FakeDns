@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -16,7 +17,7 @@ func NewApp(cfg Config) (*App, error) {
 	store := NewDomainStore(cfg.DomainsPath)
 	reloader := NewServiceReloader(cfg.ServiceName)
 
-	ui, err := NewUI(cfg.TemplatesDir, cfg.StaticDir)
+	ui, err := NewUI()
 	if err != nil {
 		return nil, err
 	}
@@ -33,34 +34,35 @@ func NewApp(cfg Config) (*App, error) {
 func (a *App) Run() error {
 	mux := http.NewServeMux()
 
-	// статика: /static/styles.css
-	mux.Handle("/static/", a.ui.StaticHandler())
+	// =========================
+	// Web UI (embedWeb)
+	// =========================
 
-	// страницы/действия
-	mux.HandleFunc("/", a.handleIndex)
+	// UI доступен по /ui/*
+	mux.Handle("/ui/",
+		http.StripPrefix("/ui/", a.ui.Handler()),
+	)
+
+	// корень -> /ui/
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/ui/", http.StatusFound)
+	})
+
+	// =========================Ф
+	// Actions / API
+	// =========================
+
 	mux.HandleFunc("/add", a.handleAdd)
 	mux.HandleFunc("/delete", a.handleDelete)
+
+	mux.HandleFunc("/api/domains", a.handleListDomains)
 
 	return http.ListenAndServe(a.cfg.ListenAddr, mux)
 }
 
-func (a *App) handleIndex(w http.ResponseWriter, r *http.Request) {
-	domains, err := a.store.List()
-	if err != nil {
-		http.Error(w, "failed to read domains: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	model := UIModel{
-		Domains: domains,
-		Message: r.URL.Query().Get("msg"),
-	}
-
-	if err := a.ui.RenderIndex(w, model); err != nil {
-		http.Error(w, "template error: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
+// =========================
+// Handlers
+// =========================
 
 func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -72,32 +74,32 @@ func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
 	domains := splitDomains(raw)
 
 	if len(domains) == 0 {
-		http.Redirect(w, r, "/?msg=Empty", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Empty", http.StatusSeeOther)
 		return
 	}
 
 	added, skipped, removed, err := a.store.MergeMany(domains)
 	if err != nil {
-		http.Redirect(w, r, "/?msg=Add+failed", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Add+failed", http.StatusSeeOther)
 		return
 	}
 
-	// reload только если были изменения (added или removed)
+	// reload только если были изменения
 	if added > 0 || removed > 0 {
 		if err := a.reload.Reload(); err != nil {
-			http.Redirect(w, r, "/?msg=Changed,+but+reload+failed", http.StatusSeeOther)
+			http.Redirect(w, r, "/ui/?msg=Changed,+but+reload+failed", http.StatusSeeOther)
 			return
 		}
-		http.Redirect(w, r, "/?msg=Done", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Done", http.StatusSeeOther)
 		return
 	}
 
-	// изменений не было
 	if skipped > 0 {
-		http.Redirect(w, r, "/?msg=No+changes", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=No+changes", http.StatusSeeOther)
 		return
 	}
-	http.Redirect(w, r, "/?msg=No+changes", http.StatusSeeOther)
+
+	http.Redirect(w, r, "/ui/?msg=No+changes", http.StatusSeeOther)
 }
 
 func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -108,28 +110,47 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 	target := NormalizeDomain(r.FormValue("domain"))
 	if target == "" {
-		http.Redirect(w, r, "/?msg=Empty+domain", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Empty+domain", http.StatusSeeOther)
 		return
 	}
 
 	removed, err := a.store.Delete(target)
 	if err != nil {
-		http.Redirect(w, r, "/?msg=Delete+failed", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Delete+failed", http.StatusSeeOther)
 		return
 	}
 	if !removed {
-		http.Redirect(w, r, "/?msg=Not+found", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Not+found", http.StatusSeeOther)
 		return
 	}
 
 	if err := a.reload.Reload(); err != nil {
-		http.Redirect(w, r, "/?msg=Deleted,+but+reload+failed", http.StatusSeeOther)
+		http.Redirect(w, r, "/ui/?msg=Deleted,+but+reload+failed", http.StatusSeeOther)
 		return
 	}
 
-	http.Redirect(w, r, "/?msg=Deleted", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/?msg=Deleted", http.StatusSeeOther)
 }
 
+func (a *App) handleListDomains(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	domains, err := a.store.List()
+	if err != nil {
+		http.Error(w, "failed to read domains", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(w).Encode(domains)
+}
+
+// =========================
+// Utils
+// =========================
 func splitDomains(raw string) []string {
 	lines := strings.Split(raw, "\n")
 
@@ -141,7 +162,6 @@ func splitDomains(raw string) []string {
 		if d == "" {
 			continue
 		}
-		// очень базовая фильтрация мусора
 		if strings.ContainsAny(d, " \t\r\n/") {
 			continue
 		}
