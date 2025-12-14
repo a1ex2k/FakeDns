@@ -14,15 +14,15 @@
     <header class="header">
         <div class="title">
             <h1>FakeDNS WebUI</h1>
-            <p class="subtitle">Управление списком доменов и перезагрузка службы)</p>
         </div>
     </header>
 
     <div id="msg" class="msg" hidden></div>
 
     <section class="card">
-        <h2>Добавить домены</h2>
-        <p class="hint">По одному домену на строку. Сервер сам нормализует/дедуплицирует.</p>
+        <h2>Add domains</h2>
+        <p class="hint">One domain per line. Normalization/deduplication is performed automatically.</p>
+        <p class = "hint">Service reloads automatically after changing the domain list.</p>
 
         <form class="add-form" action="/add" method="post">
             <label class="label" for="domainsInput">Domains</label>
