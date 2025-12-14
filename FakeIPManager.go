@@ -10,7 +10,7 @@ import (
 const (
 	fakeIPv4Subnet     = uint32(0xC6120000) // 198.18.0.0
 	fakeIPMaxCount     = 131070             // up to 198.19.255.254
-	fakeIPv6SubnetHigh = uint64(0xfddd_0000_0000_0000)
+	fakeIPv6SubnetHigh = uint64(0xabcd_0bad_c0de_0000)
 )
 
 type FakeIPManager struct {
