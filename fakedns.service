@@ -5,8 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/usr/bin
-ExecStart=/usr/bin/fakedns --domains="/etc/fakedns/fake-domains.list" --listen=127.0.0.1 --port=50053 --catch-all-port=50054 --upstream=1.1.1.1:53
+ExecStart=/usr/bin/fakedns --domains=/etc/fakedns/fake-domains.list --listen=127.0.0.1 --port=50053 --catch-all-port=50054 --upstream=1.1.1.1:53
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5

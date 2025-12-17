@@ -6,12 +6,12 @@ Requires=fakedns.service
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/usr/bin
 ExecStart=/usr/bin/fakedns-webui \
-  -listen="127.0.0.1:8484" \
-  -domains="/etc/fakedns/fake-domains.list" \
-  -service="fakedns.service"
-Restart=always
+  --listen=127.0.0.1:8484 \
+  --domains=/etc/fakedns/fake-domains.list \
+  --service=fakedns.service
+Restart=on-failure
+RestartPreventExitStatus=3
 RestartSec=5
 
 [Install]

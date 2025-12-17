@@ -9,6 +9,9 @@ type Config struct {
 	ListenAddr  string
 	DomainsPath string
 	ServiceName string
+
+	NoAuth     bool
+	PasswdFile string
 }
 
 func mustParseArgs() Config {
@@ -24,6 +27,9 @@ func parseArgs() (Config, error) {
 	domains := flag.String("domains", "", "path to fake-domains.list")
 	service := flag.String("service", "fakedns.service", "systemd service name")
 
+	noAuth := flag.Bool("no-auth", false, "Disable WebUI authentication (INSECURE)")
+	passwd := flag.String("passwd-file", "/etc/fakedns/webui.passwd", "Path to bcrypt password hash file")
+
 	flag.Parse()
 
 	if *domains == "" {
@@ -34,5 +40,7 @@ func parseArgs() (Config, error) {
 		ListenAddr:  *listen,
 		DomainsPath: *domains,
 		ServiceName: *service,
+		NoAuth:      *noAuth,
+		PasswdFile:  *passwd,
 	}, nil
 }

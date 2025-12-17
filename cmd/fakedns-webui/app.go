@@ -2,18 +2,24 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
 
+var ErrAuthNotInitialized = errors.New("auth not initialized")
+
 type App struct {
-	cfg    Config
-	store  *DomainStore
-	ui     *UI
-	reload *ServiceReloader
+	cfg          Config
+	store        *DomainStore
+	ui           *UI
+	reload       *ServiceReloader
+	authUser     string
+	passwordHash string
 }
 
 func NewApp(cfg Config) (*App, error) {
+
 	store := NewDomainStore(cfg.DomainsPath)
 	reloader := NewServiceReloader(cfg.ServiceName)
 
@@ -21,12 +27,21 @@ func NewApp(cfg Config) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	var authUser, passwordHash string
+	if !cfg.NoAuth {
+		u, h, err := loadAuthFile(cfg.PasswdFile)
+		if err != nil {
+			return nil, ErrAuthNotInitialized
+		}
+		authUser, passwordHash = u, h
+	}
 	return &App{
-		cfg:    cfg,
-		store:  store,
-		ui:     ui,
-		reload: reloader,
+		cfg:          cfg,
+		store:        store,
+		ui:           ui,
+		reload:       reloader,
+		authUser:     authUser,
+		passwordHash: passwordHash,
 	}, nil
 }
 
@@ -39,9 +54,11 @@ func (a *App) Run() error {
 	// =========================
 
 	// UI доступен по /ui/*
-	mux.Handle("/ui/",
-		http.StripPrefix("/ui/", a.ui.Handler()),
-	)
+	var uiHandler http.Handler = http.StripPrefix("/ui/", a.ui.Handler())
+	if !a.cfg.NoAuth {
+		uiHandler = basicAuth(a.authUser, a.passwordHash, uiHandler)
+	}
+	mux.Handle("/ui/", uiHandler)
 
 	// корень -> /ui/
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -52,10 +69,21 @@ func (a *App) Run() error {
 	// Actions / API
 	// =========================
 
-	mux.HandleFunc("/add", a.handleAdd)
-	mux.HandleFunc("/delete", a.handleDelete)
+	var addHandler http.Handler = http.HandlerFunc(a.handleAdd)
+	var delHandler http.Handler = http.HandlerFunc(a.handleDelete)
 
-	mux.HandleFunc("/api/domains", a.handleListDomains)
+	if !a.cfg.NoAuth {
+		addHandler = basicAuth(a.authUser, a.passwordHash, addHandler)
+		delHandler = basicAuth(a.authUser, a.passwordHash, delHandler)
+	}
+
+	mux.Handle("/add", addHandler)
+	mux.Handle("/delete", delHandler)
+	var domainsListHandler http.Handler = http.HandlerFunc(a.handleListDomains)
+	if !a.cfg.NoAuth {
+		domainsListHandler = basicAuth(a.authUser, a.passwordHash, domainsListHandler)
+	}
+	mux.Handle("/api/domains", domainsListHandler)
 
 	return http.ListenAndServe(a.cfg.ListenAddr, mux)
 }
