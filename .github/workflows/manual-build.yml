@@ -14,10 +14,8 @@ jobs:
     steps:
       - name: Generate yyyy.M.d.h.m Version
         id: get_version
-        # %Y: Year, %-m: Month, %-d: Day, %-H: Hour (0-23), %-M: Minute
-        # Result example: 2025.12.19.0.7 (for 12:07 AM)
         run: |
-          VER=$(date +'%Y.%-m.%-d.%-H.%-M')
+          VER=$(date +'%Y.%-m.%-d')
           echo "version=$VER" >> $GITHUB_OUTPUT
           echo "Version set to: $VER"
 
@@ -31,6 +29,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Install Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binutils # Required for 'ar' command in .ipk creation
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -46,12 +49,21 @@ jobs:
       - name: Create Packages
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
-          ./deployments/package.sh fakedns ${{ matrix.arch }} $VERSION deb
-          ./deployments/package.sh fakedns ${{ matrix.arch }} $VERSION ipk
-          ./deployments/package.sh fakedns-webui ${{ matrix.arch }} $VERSION deb
-          ./deployments/package.sh fakedns-webui ${{ matrix.arch }} $VERSION ipk
+          
+          # 1. Build .ipk packages for ALL architectures (OpenWrt)
+          ./deployments/package.sh fakedns $ARCH $VERSION ipk
+          ./deployments/package.sh fakedns-webui $ARCH $VERSION ipk
+          
+          # 2. Build .deb packages ONLY for amd64 and arm64 (Standard Linux)
+          if [ "$ARCH" != "mipsel_24kc" ]; then
+            ./deployments/package.sh fakedns $ARCH $VERSION deb
+            ./deployments/package.sh fakedns-webui $ARCH $VERSION deb
+          else
+            echo "Skipping .deb build for MIPS"
+          fi
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
