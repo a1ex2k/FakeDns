@@ -1,48 +1,79 @@
-name: Manual Go Build (Linux AMD64)
+name: Manual Release (Simplified Version)
 
 on:
-  workflow_dispatch:   # Only manual trigger
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
-
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
     steps:
-      - name: Checkout
+      - name: Generate yyyy.M.d.h.m Version
+        id: get_version
+        # %Y: Year, %-m: Month, %-d: Day, %-H: Hour (0-23), %-M: Minute
+        # Result example: 2025.12.19.0.7 (for 12:07 AM)
+        run: |
+          VER=$(date +'%Y.%-m.%-d.%-H.%-M')
+          echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Version set to: $VER"
+
+  build_and_package:
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64, mipsel_24kc]
+    
+    steps:
+      - name: Checkout code
         uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22
+          go-version: '1.21'
 
-      - name: Build Linux AMD64 binary
+      - name: Make scripts executable
+        run: chmod +x deployments/*.sh
+
+      - name: Build Binaries
+        run: ./deployments/build.sh ${{ matrix.arch }}
+
+      - name: Create Packages
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          mkdir -p build
-          GOOS=linux GOARCH=amd64 go build -o build/app-linux-amd64
+          mkdir -p dist
+          ./deployments/package.sh fakedns ${{ matrix.arch }} $VERSION deb
+          ./deployments/package.sh fakedns ${{ matrix.arch }} $VERSION ipk
+          ./deployments/package.sh fakedns-webui ${{ matrix.arch }} $VERSION deb
+          ./deployments/package.sh fakedns-webui ${{ matrix.arch }} $VERSION ipk
 
-      - name: Upload artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: app-linux-amd64
-          path: build/app-linux-amd64
+          name: packages-${{ matrix.arch }}
+          path: dist/*
 
-  release:
-    name: Create GitHub Release
-    needs: build
+  create_release:
+    needs: [prepare, build_and_package]
     runs-on: ubuntu-latest
-
     steps:
-      - name: Download artifact
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          path: build
+          path: all_packages
+          merge-multiple: true
 
-      - name: Create release
-        uses: softprops/action-gh-release@v1
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: manual-build-${{ github.run_number }}
-          name: Manual Build ${{ github.run_number }}
-          files: build/**/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ needs.prepare.outputs.version }}
+          name: Release ${{ needs.prepare.outputs.version }}
+          draft: false
+          prerelease: false
+          files: all_packages/*

@@ -1,0 +1,15 @@
+[Unit]
+Description=FakeDNS server
+After=network.target nftables.service
+Requires=nftables.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/fakedns --domains=/etc/fakedns/fake-domains.list --listen=127.0.0.1 --port=50053 --catch-all-port=50054 --upstream=8.8.8.8:53
+ExecReload=/usr/bin/kill -HUP $MAINPID
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
