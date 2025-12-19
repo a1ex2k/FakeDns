@@ -33,7 +33,6 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/usr/bin"
 mkdir -p "$BUILD_DIR/etc/init.d"
 mkdir -p "$BUILD_DIR/etc/config"
-mkdir -p "$BUILD_DIR/usr/share/$PACKAGE_NAME" # Template folder
 mkdir -p "$BUILD_DIR/CONTROL"
 mkdir -p "$DIST_DIR"
 
@@ -52,19 +51,22 @@ fi
 INIT_FILE="deployments/$PACKAGE_NAME/$PACKAGE_NAME.init"
 if [ -f "$INIT_FILE" ]; then
     cp "$INIT_FILE" "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
+    # Fix potential Windows line endings and ensure path is /etc/rc.common
+    sed -i 's/\r$//' "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
+    sed -i 's|/etc/init.d/rc.common|/etc/rc.common|g' "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
     chmod 755 "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
 else
     echo "Error: $INIT_FILE not found!"
     exit 1
 fi
 
-# 3.5 Copy Configuration File
-# We copy it to /usr/share/fakedns/ first so we can handle the logic in postinst
+# 3.5 Copy Configuration File (The "OpenWrt Way")
 CONFIG_SRC="deployments/fakedns.uciconf"
 if [ -f "$CONFIG_SRC" ]; then
-    cp "$CONFIG_SRC" "$BUILD_DIR/usr/share/$PACKAGE_NAME/fakedns.config"
+    cp "$CONFIG_SRC" "$BUILD_DIR/etc/config/$PACKAGE_NAME"
+    echo "/etc/config/$PACKAGE_NAME" > "$BUILD_DIR/CONTROL/conffiles"
 else
-    echo "Warning: $CONFIG_SRC not found, skipping config bundle."
+    echo "Warning: $CONFIG_SRC not found, no default config will be bundled."
 fi
 
 # 4. Create Control File
@@ -80,23 +82,15 @@ Description: FakeDNS Core Server
  Redirects traffic via nftables DNAT for target subnets.
 EOT
 
-# 5. Create postinst (Updated with Config Logic)
+# 5. Create postinst (Simplified)
 cat <<EOT > "$BUILD_DIR/CONTROL/postinst"
 #!/bin/sh
-# Check if running on target system
 if [ -z "\$IPKG_INSTROOT" ]; then
+    # OpenWrt's opkg handles /etc/config automatically via the 'conffiles' list.
+    # If the user modified the config, opkg installs the new one as fakedns-opkg.
     
-    # Config existence logic
-    if [ -f "/etc/config/fakedns" ]; then
-        echo "Existing config found. Creating /etc/config/fakedns-new"
-        cp "/usr/share/$PACKAGE_NAME/fakedns.conf" "/etc/config/fakedns-new"
-    else
-        echo "Installing default config to /etc/config/fakedns"
-        cp "/usr/share/$PACKAGE_NAME/fakedns.config" "/etc/config/fakedns"
-    fi
-
     /etc/init.d/$PACKAGE_NAME enable
-    /etc/init.d/$PACKAGE_NAME start
+    /etc/init.d/$PACKAGE_NAME restart
 fi
 exit 0
 EOT
@@ -118,11 +112,14 @@ STAGING_DIR="$CUR_DIR/staging"
 mkdir -p "$STAGING_DIR"
 
 cd "$BUILD_DIR"
+# Create data.tar.gz
 tar --numeric-owner --owner=0 --group=0 --exclude="./CONTROL" -czf "$STAGING_DIR/data.tar.gz" .
 
+# Create control.tar.gz
 cd "$BUILD_DIR/CONTROL"
 tar --numeric-owner --owner=0 --group=0 -czf "$STAGING_DIR/control.tar.gz" .
 
+# Create the final .ipk
 cd "$STAGING_DIR"
 echo "2.0" > debian-binary
 tar -czf "$DIST_DIR/${PACKAGE_NAME}_${VERSION}_${PKG_ARCH}.ipk" debian-binary control.tar.gz data.tar.gz
