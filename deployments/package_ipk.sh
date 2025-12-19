@@ -20,7 +20,6 @@ case "$ARCH" in
         PKG_ARCH="x86_64"
         ;;
     "mipsel_24kc")
-        # Already an OpenWrt name
         PKG_ARCH="mipsel_24kc"
         ;;
 esac
@@ -38,7 +37,7 @@ mkdir -p "$DIST_DIR"
 
 echo "Creating OpenWrt IPK for $PACKAGE_NAME ($PKG_ARCH)..."
 
-# 2. Copy Binary (Uses original $ARCH to find the file)
+# 2. Copy Binary
 if [ -f "bin/$ARCH/$PACKAGE_NAME" ]; then
     cp "bin/$ARCH/$PACKAGE_NAME" "$BUILD_DIR/usr/bin/"
     chmod +x "$BUILD_DIR/usr/bin/$PACKAGE_NAME"
@@ -52,13 +51,12 @@ INIT_FILE="deployments/$PACKAGE_NAME/$PACKAGE_NAME.init"
 if [ -f "$INIT_FILE" ]; then
     cp "$INIT_FILE" "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
     chmod 755 "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
-    echo "Added Init Script: $PACKAGE_NAME"
 else
     echo "Error: $INIT_FILE not found!"
     exit 1
 fi
 
-# 4. Create Control File (Uses translated $PKG_ARCH)
+# 4. Create Control File
 cat <<EOT > "$BUILD_DIR/CONTROL/control"
 Package: $PACKAGE_NAME
 Version: $VERSION
@@ -77,7 +75,6 @@ cat <<EOT > "$BUILD_DIR/CONTROL/postinst"
 if [ -z "\$IPKG_INSTROOT" ]; then
     /etc/init.d/$PACKAGE_NAME enable
     /etc/init.d/$PACKAGE_NAME start
-    echo "$PACKAGE_NAME enabled and started."
 fi
 exit 0
 EOT
@@ -89,7 +86,6 @@ cat <<EOT > "$BUILD_DIR/CONTROL/prerm"
 if [ -z "\$IPKG_INSTROOT" ]; then
     /etc/init.d/$PACKAGE_NAME stop
     /etc/init.d/$PACKAGE_NAME disable
-    echo "$PACKAGE_NAME stopped and disabled."
 fi
 exit 0
 EOT
@@ -98,9 +94,10 @@ chmod 755 "$BUILD_DIR/CONTROL/prerm"
 # 7. Final Build Step
 STAGING_DIR="$CUR_DIR/staging"
 mkdir -p "$STAGING_DIR"
-cd "$BUILD_DIR"
 
-tar --numeric-owner --owner=0 --group=0 -czf "$STAGING_DIR/data.tar.gz" . --exclude=CONTROL
+cd "$BUILD_DIR"
+tar --numeric-owner --owner=0 --group=0 --exclude="./CONTROL" -czf "$STAGING_DIR/data.tar.gz" .
+
 cd "$BUILD_DIR/CONTROL"
 tar --numeric-owner --owner=0 --group=0 -czf "$STAGING_DIR/control.tar.gz" .
 
@@ -108,6 +105,7 @@ cd "$STAGING_DIR"
 echo "2.0" > debian-binary
 tar -czf "$DIST_DIR/${PACKAGE_NAME}_${VERSION}_${PKG_ARCH}.ipk" debian-binary control.tar.gz data.tar.gz
 
+# 8. Cleanup
 cd "$CUR_DIR"
 rm -rf "$BUILD_DIR" "$STAGING_DIR"
 echo "✅ IPK complete: dist/${PACKAGE_NAME}_${VERSION}_${PKG_ARCH}.ipk"
