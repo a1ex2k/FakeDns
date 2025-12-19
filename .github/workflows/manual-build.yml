@@ -1,4 +1,4 @@
-name: Manual Release (Simplified Version)
+name: Build and Release FakeDNS
 
 on:
   workflow_dispatch:
@@ -12,18 +12,19 @@ jobs:
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
-      - name: Generate yyyy.M.d.h.m Version
+      - name: Generate Version String
         id: get_version
         run: |
-          VER=$(date +'%Y.%-m.%-d')
+          # Format: YYYY.MM.DD
+          VER=$(date +'%Y.%m.%d')
           echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "Version set to: $VER"
 
   build_and_package:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # We use a matrix of all required architectures
         arch: [amd64, arm64, mipsel_24kc]
     
     steps:
@@ -33,36 +34,38 @@ jobs:
       - name: Install Packaging Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y binutils # Required for 'ar' command in .ipk creation
+          sudo apt-get install -y binutils # Required for 'ar' command in IPK creation
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.21'
 
-      - name: Make scripts executable
-        run: chmod +x deployments/*.sh
-
-      - name: Build Binaries
-        run: ./deployments/build.sh ${{ matrix.arch }}
-
-      - name: Create Packages
+      - name: Build and Package
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p dist
-          
-          # 1. Build .ipk packages for ALL architectures (OpenWrt)
-          ./deployments/package.sh fakedns $ARCH $VERSION ipk
-          ./deployments/package.sh fakedns-webui $ARCH $VERSION ipk
-          
-          # 2. Build .deb packages ONLY for amd64 and arm64 (Standard Linux)
-          if [ "$ARCH" != "mipsel_24kc" ]; then
-            ./deployments/package.sh fakedns $ARCH $VERSION deb
-            ./deployments/package.sh fakedns-webui $ARCH $VERSION deb
-          else
-            echo "Skipping .deb build for MIPS"
+          chmod +x deployments/*.sh
+
+          # 1. ALWAYS build the fakedns core binary for the current matrix arch
+          ./deployments/build.sh $ARCH fakedns
+
+          # 2. OpenWrt IPK Path
+          # Requirement: IPK for arm64 and mipsel_24kc
+          if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "mipsel_24kc" ]; then
+            echo "Packaging IPK for $ARCH..."
+            ./deployments/package_ipk.sh $ARCH $VERSION
+          fi
+
+          # 3. Debian DEB Path (Combined)
+          # Requirement: DEB for arm64 and amd64
+          if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "amd64" ]; then
+            echo "Packaging DEB for $ARCH..."
+            # For the combined DEB, we must also build the WebUI binary
+            ./deployments/build.sh $ARCH fakedns-webui
+            ./deployments/package_deb.sh $ARCH $VERSION
           fi
 
       - name: Upload Artifacts
@@ -84,7 +87,7 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.prepare.outputs.version }}
+          tag_name: v${{ needs.prepare.outputs.version }}
           name: Release ${{ needs.prepare.outputs.version }}
           draft: false
           prerelease: false

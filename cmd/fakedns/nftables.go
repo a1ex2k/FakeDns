@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"strconv"
 )
 
 func RunNftCommand(args ...string) error {
@@ -17,7 +18,7 @@ func RunNftCommand(args ...string) error {
 	return nil
 }
 
-func SetupNftables(ipv4Subnet, ipv6Subnet string, routingMark uint32) error {
+func SetupNftables(ipv4Subnet, ipv6Subnet string, routingMark uint) error {
 	log.Println("Attempting nftables setup...")
 	_ = RunNftCommand("add", "table", nftTableName)
 
@@ -27,11 +28,11 @@ func SetupNftables(ipv4Subnet, ipv6Subnet string, routingMark uint32) error {
 		return fmt.Errorf("failed to add mangle chain: %w", err)
 	}
 
+	fwmarkString := strconv.FormatUint(uint64(routingMark), 10)
 	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "meta", "mark", "set", "ct", "mark")
-	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip", "daddr", ipv4Subnet, "meta", "mark", "set", routingMark, "ct", "mark", "set", "meta", "mark")
-	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip6", "daddr", ipv6Subnet, "meta", "mark", "set", routingMark, "ct", "mark", "set", "meta", "mark")
+	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip", "daddr", ipv4Subnet, "meta", "mark", "set", fwmarkString, "ct", "mark", "set", "meta", "mark")
+	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip6", "daddr", ipv6Subnet, "meta", "mark", "set", fwmarkString, "ct", "mark", "set", "meta", "mark")
 
-	// 4. Create NAT Chain (Priority -101)
 	natSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
 	err = RunNftCommand("add", "chain", nftTableName, nftChainName, "{", natSpec, ";", "}")
 	if err != nil {
