@@ -34,7 +34,7 @@ for COMPONENT in "fakedns" "fakedns-webui"; do
     SERVICE_FILE="deployments/$COMPONENT/$COMPONENT.service"
     if [ -f "$SERVICE_FILE" ]; then
         cp "$SERVICE_FILE" "$ROOT/lib/systemd/system/"
-        echo "📄 Added Service: $COMPONENT.service"
+        echo "Added Service: $COMPONENT.service"
     fi
 done
 
