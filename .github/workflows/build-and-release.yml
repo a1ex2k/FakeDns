@@ -14,28 +14,28 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
+      is_tag: ${{ steps.get_version.outputs.is_tag }}
     steps:
       - name: Get Version from Tag
         id: get_version
         run: |
-          # If triggered by a tag (e.g., refs/tags/v1.2.3), extract the version
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            # Strips the 'v' from the start of the tag name
             VER=${GITHUB_REF_NAME#v}
+            IS_TAG="true"
           else
-            # Fallback for manual workflow_dispatch
             VER=$(date +'%Y.%m.%d')
+            IS_TAG="false"
           fi
           
           echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "Version determined as: $VER"
+          echo "is_tag=$IS_TAG" >> $GITHUB_OUTPUT
+          echo "Version: $VER, Is Tag: $IS_TAG"
 
   build_and_package:
     needs: prepare
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # We use a matrix of all required architectures
         arch: [amd64, arm64, mipsel_24kc]
     
     steps:
@@ -45,7 +45,7 @@ jobs:
       - name: Install Packaging Tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y binutils # Required for 'ar' command in IPK creation
+          sudo apt-get install -y binutils
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -61,23 +61,18 @@ jobs:
           mkdir -p dist
           chmod +x deployments/*.sh
 
-          # 1. ALWAYS build the fakedns core binary for the current matrix arch
+          # 1. Build core binary
           ./deployments/build.sh $ARCH fakedns
 
-          # 2. OpenWrt IPK Path
-          # Requirement: IPK for arm64 and mipsel_24kc
+          # 2. OpenWrt IPK
           if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "mipsel_24kc" ]; then
-            echo "Packaging IPK for $ARCH..."
-            ./deployments/package_ipk.sh $ARCH $VERSION
+            ./deployments/package_core_ipk.sh $ARCH $VERSION
           fi
 
-          # 3. Debian DEB Path (Combined)
-          # Requirement: DEB for arm64 and amd64
+          # 3. Debian DEB
           if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "amd64" ]; then
-            echo "Packaging DEB for $ARCH..."
-            # For the combined DEB, we must also build the WebUI binary
             ./deployments/build.sh $ARCH fakedns-webui
-            ./deployments/package_deb.sh $ARCH $VERSION
+            ./deployments/package_full_deb.sh $ARCH $VERSION
           fi
 
       - name: Upload Artifacts
@@ -88,6 +83,8 @@ jobs:
 
   create_release:
     needs: [prepare, build_and_package]
+    # THIS IS THE KEY LINE: Only run if the trigger was a tag
+    if: needs.prepare.outputs.is_tag == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Download all artifacts

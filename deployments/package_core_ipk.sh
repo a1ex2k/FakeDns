@@ -32,6 +32,8 @@ BUILD_DIR="$CUR_DIR/ipk_build_root"
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR/usr/bin"
 mkdir -p "$BUILD_DIR/etc/init.d"
+mkdir -p "$BUILD_DIR/etc/config"
+mkdir -p "$BUILD_DIR/usr/share/$PACKAGE_NAME" # Template folder
 mkdir -p "$BUILD_DIR/CONTROL"
 mkdir -p "$DIST_DIR"
 
@@ -56,6 +58,15 @@ else
     exit 1
 fi
 
+# 3.5 Copy Configuration File
+# We copy it to /usr/share/fakedns/ first so we can handle the logic in postinst
+CONFIG_SRC="deployments/fakedns.uciconf"
+if [ -f "$CONFIG_SRC" ]; then
+    cp "$CONFIG_SRC" "$BUILD_DIR/usr/share/$PACKAGE_NAME/fakedns.config"
+else
+    echo "Warning: $CONFIG_SRC not found, skipping config bundle."
+fi
+
 # 4. Create Control File
 cat <<EOT > "$BUILD_DIR/CONTROL/control"
 Package: $PACKAGE_NAME
@@ -69,10 +80,21 @@ Description: FakeDNS Core Server
  Redirects traffic via nftables DNAT for target subnets.
 EOT
 
-# 5. Create postinst
+# 5. Create postinst (Updated with Config Logic)
 cat <<EOT > "$BUILD_DIR/CONTROL/postinst"
 #!/bin/sh
+# Check if running on target system
 if [ -z "\$IPKG_INSTROOT" ]; then
+    
+    # Config existence logic
+    if [ -f "/etc/config/fakedns" ]; then
+        echo "Existing config found. Creating /etc/config/fakedns-new"
+        cp "/usr/share/$PACKAGE_NAME/fakedns.conf" "/etc/config/fakedns-new"
+    else
+        echo "Installing default config to /etc/config/fakedns"
+        cp "/usr/share/$PACKAGE_NAME/fakedns.config" "/etc/config/fakedns"
+    fi
+
     /etc/init.d/$PACKAGE_NAME enable
     /etc/init.d/$PACKAGE_NAME start
 fi
