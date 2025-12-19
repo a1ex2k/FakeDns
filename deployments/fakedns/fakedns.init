@@ -1,4 +1,4 @@
-#!/bin/sh /etc/init.d/rc.common
+#!/bin/sh /etc/rc.common
 
 # START=95 ensures it starts after network and firewall (usually START=19)
 START=95

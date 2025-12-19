@@ -1,6 +1,9 @@
-name: Build and Release FakeDNS
+name: Build and Release
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -12,12 +15,20 @@ jobs:
     outputs:
       version: ${{ steps.get_version.outputs.version }}
     steps:
-      - name: Generate Version String
+      - name: Get Version from Tag
         id: get_version
         run: |
-          # Format: YYYY.MM.DD
-          VER=$(date +'%Y.%m.%d')
+          # If triggered by a tag (e.g., refs/tags/v1.2.3), extract the version
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Strips the 'v' from the start of the tag name
+            VER=${GITHUB_REF_NAME#v}
+          else
+            # Fallback for manual workflow_dispatch
+            VER=$(date +'%Y.%m.%d')
+          fi
+          
           echo "version=$VER" >> $GITHUB_OUTPUT
+          echo "Version determined as: $VER"
 
   build_and_package:
     needs: prepare
