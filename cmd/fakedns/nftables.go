@@ -5,8 +5,6 @@ import (
 	"log"
 	"net"
 	"os/exec"
-	"runtime"
-	"strings"
 )
 
 func RunNftCommand(args ...string) error {
@@ -14,65 +12,55 @@ func RunNftCommand(args ...string) error {
 	output, err := cmd.CombinedOutput()
 
 	if err != nil {
-		log.Printf("nft command failed: %v\nOutput:\n%s", err, string(output))
-		return fmt.Errorf("nft command failed: %w\nOutput: %s", err, string(output))
-	}
-	if len(strings.TrimSpace(string(output))) > 0 {
-		log.Printf("nft command output:\n%s", string(output))
+		return fmt.Errorf("nft command %v failed: %w\nOutput: %s", args, err, string(output))
 	}
 	return nil
 }
 
-func SetupNftables() error {
+func SetupNftables(ipv4Subnet, ipv6Subnet string, routingMark uint32) error {
 	log.Println("Attempting nftables setup...")
+	_ = RunNftCommand("add", "table", nftTableName)
 
-	err := RunNftCommand("add table", nftTableName)
-	if err != nil && runtime.GOOS == "linux" {
-		if !strings.Contains(err.Error(), "exists") {
-			return fmt.Errorf("failed to add nft table: %w", err)
-		}
-		log.Println("nft table already exists, continuing...")
+	mangleSpec := fmt.Sprintf("type filter hook prerouting priority %s", nftMarkingHookPrio)
+	err := RunNftCommand("add", "chain", nftTableName, nftMarkingChainName, "{", mangleSpec, ";", "}")
+	if err != nil {
+		return fmt.Errorf("failed to add mangle chain: %w", err)
 	}
 
-	chainSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
-	err = RunNftCommand("add", "chain", nftTableName, nftChainName, "{", chainSpec, ";", "}")
-	if err != nil && runtime.GOOS == "linux" {
-		if !strings.Contains(err.Error(), "exists") {
-			return fmt.Errorf("failed to add nft chain: %w", err)
-		}
-		log.Println("nft chain already exists, continuing...")
+	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "meta", "mark", "set", "ct", "mark")
+	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip", "daddr", ipv4Subnet, "meta", "mark", "set", routingMark, "ct", "mark", "set", "meta", "mark")
+	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip6", "daddr", ipv6Subnet, "meta", "mark", "set", routingMark, "ct", "mark", "set", "meta", "mark")
+
+	// 4. Create NAT Chain (Priority -101)
+	natSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
+	err = RunNftCommand("add", "chain", nftTableName, nftChainName, "{", natSpec, ";", "}")
+	if err != nil {
+		return fmt.Errorf("failed to add nat chain: %w", err)
 	}
 
-	log.Println("nftables setup processed (logged only on non-Linux).")
+	log.Println("nftables setup complete with fwmarking and NAT chains.")
 	return nil
 }
 
 func AddDnat4Rule(realIP, fakeIP net.IP) error {
 	ruleArgs := []string{
-		"add rule", nftTableName, nftChainName,
-		"ip daddr", fakeIP.String(),
-		"dnat to", realIP.String(),
+		"add", "rule", nftTableName, nftChainName,
+		"ip", "daddr", fakeIP.String(),
+		"dnat", "to", realIP.String(),
 	}
 	return RunNftCommand(ruleArgs...)
 }
 
 func AddDnat6Rule(realIP, fakeIP net.IP) error {
 	ruleArgs := []string{
-		"add rule", nftTableName, nftChainName,
-		"ip6 daddr", fakeIP.String(),
-		"dnat to", realIP.String(),
+		"add", "rule", nftTableName, nftChainName,
+		"ip6", "daddr", fakeIP.String(),
+		"dnat", "to", realIP.String(),
 	}
 	return RunNftCommand(ruleArgs...)
 }
 
 func CleanupNftables() error {
 	log.Println("Attempting nftables cleanup...")
-	err := RunNftCommand("delete table", nftTableName)
-
-	if err != nil && runtime.GOOS == "linux" {
-		log.Printf("Warning: Failed to delete nftables table '%s': %v", nftTableName, err)
-		return err
-	}
-	log.Println("nftables cleanup processed (logged only on non-Linux).")
-	return nil
+	return RunNftCommand("delete", "table", nftTableName)
 }

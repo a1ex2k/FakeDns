@@ -1,0 +1,47 @@
+#!/bin/sh /etc/init.d/rc.common
+
+# START=95 ensures it starts after network and firewall (usually START=19)
+START=95
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    
+    # Path to your binary
+    procd_set_param command /usr/bin/fakedns
+    
+    # Arguments (matching your systemd ExecStart)
+    procd_append_param command --domains /etc/fakedns/fake-domains.list
+    procd_append_param command --listen 127.0.0.1
+    procd_append_param command --port 50053
+    
+    # omit because we do not need catch-all normally
+    # procd_append_param command --catch-all-port 50054
+
+    procd_append_param command --fwmark 0x80000000
+    procd_append_param command --upstream 8.8.8.8:53
+
+    # Restart logic (Restart=always, RestartSec=5)
+    # respawn: <threshold> <timeout> <retry>
+    procd_set_param respawn 3600 5 0
+    
+    # Logging: Send stdout and stderr to logread (syslog)
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    
+    # Use root user (default)
+    procd_set_param user root
+
+    procd_close_instance
+}
+
+reload_service() {
+    # procd_send_signal <service_name> <instance_name> <signal>
+    procd_send_signal fakedns "main" SIGHUP
+}
+
+
+stop_service() {
+    # Procd sends SIGTERM by default.
+    return 0
+}

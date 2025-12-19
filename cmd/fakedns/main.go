@@ -14,18 +14,25 @@ import (
 func main() {
 	domainsFile := flag.String("domains", defaultDomainsFile, "Path to the domains file")
 	listenIPStr := flag.String("listen", defaultListenIp, "IP address to listen on")
-	port := flag.Int("port", defaultListenPort, "Port for FakeDNS to listen on")
-	catchAllPort := flag.Int("catch-all-port", defaultCatchAllPort, "Port for faking all DNS requests")
+	port := flag.Uint("port", defaultListenPort, "Port for FakeDNS to listen on")
+	fwmark := flag.Uint("fwmark", defaultFwMark, "Fwmark to set on packets")
+	catchAllPort := flag.Uint("catch-all-port", 0, "Port for faking all DNS requests")
 	upstreamResolver := flag.String("upstream", defaultUpstream, "Upstream DNS resolver (host:port)")
 
 	flag.Parse()
-
+	skipCatchAll := *catchAllPort == 0
 	log.Printf("Domains file:   %s", *domainsFile)
-	log.Printf("Listen address: %s:%d (catch-all on :%d)", *listenIPStr, *port, *catchAllPort)
+	log.Printf("Firewall mark:  %x", *fwmark)
+	if skipCatchAll {
+		log.Printf("Listen address: %s:%d (no catch-all server)", *listenIPStr, *port)
+	} else {
+		log.Printf("Listen address: %s:%d (catch-all on %s:%d)", *listenIPStr, *port, *listenIPStr, *catchAllPort)
+	}
 	log.Printf("Upstream DNS:   %s", *upstreamResolver)
 
-	if err := SetupNftables(); err != nil {
-		log.Printf("ERROR: Initial nftables setup failed: %v.", err)
+	if err := SetupNftables("198.18.0.0/15", "abcd:bad:c0de::/64", *fwmark); err != nil {
+		log.Fatalf("FATAL: Initial nftables setup failed: %v.", err)
+		return
 	}
 
 	fakeIPManager := NewFakeIPManager(AddDnat4Rule, AddDnat6Rule)
@@ -34,6 +41,7 @@ func main() {
 	domainsList, err := DomainsListFromFile(*domainsFile)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to load initial domains file: %v", err)
+		return
 	}
 
 	handler := &DnsHandler{
@@ -44,27 +52,30 @@ func main() {
 		dnsClient:     dnsClient,
 	}
 	udpServer := &dns.Server{
-		Addr:    *listenIPStr + ":" + strconv.Itoa(*port),
+		Addr:    *listenIPStr + ":" + strconv.FormatUint(uint64(*port), 10),
 		Net:     "udp",
 		Handler: handler,
 		UDPSize: maxUDPSize,
 	}
 
-	catchAllHandler := &DnsHandler{
-		upstreamAddr:  *upstreamResolver,
-		fakeIPManager: fakeIPManager,
-		domainsList:   nil,
-		forceFakeAll:  true,
-		dnsClient:     dnsClient,
-	}
-	catchAllUdpServer := &dns.Server{
-		Addr:    *listenIPStr + ":" + strconv.Itoa(*catchAllPort),
-		Net:     "udp",
-		Handler: catchAllHandler,
-		UDPSize: maxUDPSize,
+	var catchAllUdpServer *dns.Server
+	if !skipCatchAll {
+		catchAllHandler := &DnsHandler{
+			upstreamAddr:  *upstreamResolver,
+			fakeIPManager: fakeIPManager,
+			domainsList:   nil,
+			forceFakeAll:  true,
+			dnsClient:     dnsClient,
+		}
+		catchAllUdpServer = &dns.Server{
+			Addr:    *listenIPStr + ":" + strconv.FormatUint(uint64(*catchAllPort), 10),
+			Net:     "udp",
+			Handler: catchAllHandler,
+			UDPSize: maxUDPSize,
+		}
 	}
 
-	log.Printf("Starting FakeDNS server on %s, ports %d and %d", *listenIPStr, *port, *catchAllPort)
+	log.Printf("Starting FakeDNS server on %s...", *listenIPStr)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -76,12 +87,15 @@ func main() {
 			serverFailed <- err
 		}
 	}()
-	go func() {
-		if err := catchAllUdpServer.ListenAndServe(); err != nil {
-			log.Printf("Failed to start fake-all server: %v", err)
-			serverFailed <- err
-		}
-	}()
+
+	if !skipCatchAll {
+		go func() {
+			if err := catchAllUdpServer.ListenAndServe(); err != nil {
+				log.Printf("Failed to start fake-all server: %v", err)
+				serverFailed <- err
+			}
+		}()
+	}
 
 	for {
 		select {

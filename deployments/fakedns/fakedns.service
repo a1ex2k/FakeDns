@@ -6,7 +6,7 @@ Requires=nftables.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/fakedns --domains=/etc/fakedns/fake-domains.list --listen=127.0.0.1 --port=50053 --catch-all-port=50054 --upstream=8.8.8.8:53
+ExecStart=/usr/bin/fakedns --domains=/etc/fakedns/fake-domains.list --listen=127.0.0.1 --port=50053 --catch-all-port=50054 --fwmark=0x80000000 --upstream=8.8.8.8:53
 ExecReload=/usr/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=5
