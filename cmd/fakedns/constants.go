@@ -17,3 +17,8 @@ const (
 	defaultUpstream          = "8.8.8.8:53"
 	defaultFwMark       uint = uint(1 << 31)
 )
+const (
+	// ...
+	defaultFake4CIDR = "198.18.0.0/15"
+	defaultFake6CIDR = "abcd:bad:c0de::/64"
+)

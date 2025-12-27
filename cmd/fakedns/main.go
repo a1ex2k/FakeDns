@@ -16,6 +16,9 @@ func main() {
 	listenIPStr := flag.String("listen", defaultListenIp, "IP address to listen on")
 	port := flag.Uint("port", defaultListenPort, "Port for FakeDNS to listen on")
 	fwmark := flag.Uint("fwmark", defaultFwMark, "Fwmark to set on packets")
+	fake4CIDR := flag.String("fake4", defaultFake4CIDR, "IPv4 fake IP CIDR")
+	fake6CIDR := flag.String("fake6", defaultFake6CIDR, "IPv6 fake IP CIDR (recommended /64)")
+
 	catchAllPort := flag.Uint("catch-all-port", 0, "Port for faking all DNS requests")
 	upstreamResolver := flag.String("upstream", defaultUpstream, "Upstream DNS resolver (host:port)")
 
@@ -23,6 +26,9 @@ func main() {
 	skipCatchAll := *catchAllPort == 0
 	log.Printf("Domains file:   %s", *domainsFile)
 	log.Printf("Firewall mark:  %x", *fwmark)
+	log.Printf("Fake IPv4 CIDR: %s", *fake4CIDR)
+	log.Printf("Fake IPv6 CIDR: %s", *fake6CIDR)
+
 	if skipCatchAll {
 		log.Printf("Listen address: %s:%d (no catch-all server)", *listenIPStr, *port)
 	} else {
@@ -30,12 +36,16 @@ func main() {
 	}
 	log.Printf("Upstream DNS:   %s", *upstreamResolver)
 
-	if err := SetupNftables("198.18.0.0/15", "abcd:bad:c0de::/64", *fwmark); err != nil {
+	if err := SetupNftables(*fake4CIDR, *fake6CIDR, *fwmark); err != nil {
 		log.Fatalf("FATAL: Initial nftables setup failed: %v.", err)
 		return
 	}
 
-	fakeIPManager := NewFakeIPManager(AddDnat4Rule, AddDnat6Rule)
+	fakeIPManager, err := NewFakeIPManager(*fake4CIDR, *fake6CIDR, AddDnat4Rule, AddDnat6Rule)
+	if err != nil {
+		log.Fatalf("FATAL: Failed to init fake IP manager: %v", err)
+		return
+	}
 	dnsClient := &dns.Client{Net: "udp"}
 
 	domainsList, err := DomainsListFromFile(*domainsFile)
