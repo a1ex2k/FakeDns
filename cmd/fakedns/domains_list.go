@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -17,10 +18,30 @@ type DomainsList struct {
 
 func (d *DomainsList) Load() error {
 	file, err := os.Open(d.filePath)
-	if err != nil {
-		return fmt.Errorf("failed to open domains file '%s': %w", d.filePath, err)
-	}
 	defer file.Close()
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Create empty file (and parent dirs) and continue
+			if mkErr := os.MkdirAll(filepath.Dir(d.filePath), 0755); mkErr != nil {
+				return fmt.Errorf("failed to create directories for '%s': %w", d.filePath, mkErr)
+			}
+			f, createErr := os.OpenFile(d.filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
+			if createErr != nil {
+				return fmt.Errorf("failed to create domains file '%s': %w", d.filePath, createErr)
+			}
+			_ = f.Close()
+
+			// Now open for reading
+			file, err = os.Open(d.filePath)
+			if err != nil {
+				return fmt.Errorf("failed to open domains file '%s' after creating: %w", d.filePath, err)
+			}
+
+			log.Printf("Domains file '%s' did not exist; created empty file", d.filePath)
+		} else {
+			return fmt.Errorf("failed to open domains file '%s': %w", d.filePath, err)
+		}
+	}
 
 	domains := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
