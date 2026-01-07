@@ -1,7 +1,6 @@
 [Unit]
 Description=FakeDNS WebUI
-After=network.target fakedns.service
-Requires=fakedns.service
+After=network.target
 
 [Service]
 Type=simple
@@ -10,6 +9,7 @@ ExecStart=/usr/bin/fakedns-webui \
   --listen=127.0.0.1:8484 \
   --domains=/etc/fakedns/fake-domains.list \
   --service=fakedns.service
+  --no-auth
 Restart=on-failure
 RestartPreventExitStatus=3
 RestartSec=5

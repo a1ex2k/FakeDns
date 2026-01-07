@@ -1,64 +1,58 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>FakeDNS WebUI</title>
-
     <link rel="stylesheet" href="styles.css" />
     <script defer src="scripts.js"></script>
 </head>
-
 <body>
-<div class="wrap">
-    <header class="header">
-        <div class="title">
-            <h1>FakeDNS WebUI</h1>
+    <div class="wrap">
+        <header class="header">
+            <span class="h1">FakeDNS</span>
+        </header>
+        <div class="header row">
+            <button class="btn" data-action="start">Start</button>
+            <button class="btn primary" data-action="restart">Restart</button>
+            <button class="btn" data-action="reload">Reload</button>
+            <button class="btn danger" data-action="stop">Stop</button>
         </div>
-    </header>
+        <div id="msg" class="msg" hidden>Loading...</div>
+        <div class="grid-container">
+            <section class="card">
+                <h2>Add domains</h2>
+                <p class="hint">One domain per line. Normalization is performed automatically.</p>
+                <p class="hint">Service reloads automatically after changing the domain list.</p>
+                <textarea id="domainsInput" name="domains" rows="6"
+                    placeholder="example.com&#10;example2.com"></textarea>
 
-    <div id="msg" class="msg" hidden></div>
-
-    <section class="card">
-        <h2>Add domains</h2>
-        <p class="hint">One domain per line. Normalization/deduplication is performed automatically.</p>
-        <p class = "hint">Service reloads automatically after changing the domain list.</p>
-
-        <form class="add-form" action="/add" method="post">
-            <label class="label" for="domainsInput">Domains</label>
-            <textarea
-                    id="domainsInput"
-                    name="domains"
-                    rows="6"
-                    placeholder="example.com&#10;example2.com"
-                    required
-            ></textarea>
-
-            <div class="row">
-                <button class="btn primary" type="submit">Add</button>
-                <button class="btn" type="button" id="clearBtn">Clear</button>
-            </div>
-        </form>
-    </section>
-
-    <section class="card">
-        <div class="row between center">
-            <div>
-                <h2>Domains</h2>
-                <p class="hint">Всего: <span id="count">0</span></p>
-            </div>
-
-            <div class="search">
-                <input id="searchInput" type="search" placeholder="Search domain…" />
-                <button class="btn" type="button" id="clearSearchBtn">Clear</button>
-            </div>
+                <div class="row">
+                    <button class="btn primary" id="addBtn">Add</button>
+                    <button class="btn" id="clearBtn">Clear</button>
+                </div>
+            </section>
+            <section class="card">
+                <h2>Copy list</h2>
+                <p class="row">
+                    <button class="btn" data-copyall="noip">No IP</button>
+                    <button class="btn" data-copyall="dnsmasq">DNSmasq</button>
+                    <button class="btn" data-copyall="adguard">AdguardHome</button>
+                </p>
+                <textarea id="domainsPlainTxt" name="domains" rows="8"></textarea>
+            </section>
         </div>
-
-        <div id="loading" class="hint">Loading…</div>
-        <div id="empty" class="empty" hidden>No domains yet</div>
-
-        <ul id="list" class="list"></ul>
-    </section>
-</div>
+        <section class="card">
+            <div class="row between">
+                <div class="h2">Domains (<span id="count">0</span>)</div>
+                <div class="search">
+                    <input id="searchInput" type="search" placeholder="Search domain…" />
+                    <button class="btn" type="button" id="clearSearchBtn">Clear</button>
+                </div>
+            </div>
+            <div id="empty" class="empty" hidden>No domains yet</div>
+            <ul id="list" class="list"></ul>
+        </section>
+    </div>
 </body>
 </html>

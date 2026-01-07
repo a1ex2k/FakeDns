@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 )
@@ -45,46 +46,32 @@ func NewApp(cfg Config) (*App, error) {
 	}, nil
 }
 
-// Run поднимает HTTP сервер и регистрирует роуты
 func (a *App) Run() error {
 	mux := http.NewServeMux()
-
-	// =========================
-	// Web UI (embedWeb)
-	// =========================
-
-	// UI доступен по /ui/*
 	var uiHandler http.Handler = http.StripPrefix("/ui/", a.ui.Handler())
 	if !a.cfg.NoAuth {
 		uiHandler = basicAuth(a.authUser, a.passwordHash, uiHandler)
 	}
 	mux.Handle("/ui/", uiHandler)
-
-	// корень -> /ui/
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/" {
+			http.NotFound(w, r)
+			return
+		}
 		http.Redirect(w, r, "/ui/", http.StatusFound)
 	})
 
-	// =========================Ф
-	// Actions / API
-	// =========================
+	apiMux := http.NewServeMux()
+	apiMux.Handle("/api/add", http.HandlerFunc(a.handleAdd))
+	apiMux.Handle("/api/delete", http.HandlerFunc(a.handleDelete))
+	apiMux.Handle("/api/list", http.HandlerFunc(a.handleListDomains))
+	apiMux.Handle("/api/action", http.HandlerFunc(a.handleServiceAction))
 
-	var addHandler http.Handler = http.HandlerFunc(a.handleAdd)
-	var delHandler http.Handler = http.HandlerFunc(a.handleDelete)
-
+	var apiHandler http.Handler = apiMux
 	if !a.cfg.NoAuth {
-		addHandler = basicAuth(a.authUser, a.passwordHash, addHandler)
-		delHandler = basicAuth(a.authUser, a.passwordHash, delHandler)
+		apiHandler = basicAuth(a.authUser, a.passwordHash, apiHandler)
 	}
-
-	mux.Handle("/add", addHandler)
-	mux.Handle("/delete", delHandler)
-	var domainsListHandler http.Handler = http.HandlerFunc(a.handleListDomains)
-	if !a.cfg.NoAuth {
-		domainsListHandler = basicAuth(a.authUser, a.passwordHash, domainsListHandler)
-	}
-	mux.Handle("/api/domains", domainsListHandler)
-
+	mux.Handle("/api/", apiHandler)
 	return http.ListenAndServe(a.cfg.ListenAddr, mux)
 }
 
@@ -92,113 +79,146 @@ func (a *App) Run() error {
 // Handlers
 // =========================
 
-func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+func (a *App) reply(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(ApiResponse{
+		Status:  status,
+		Message: message,
+	})
+}
+
+func (a *App) handleServiceAction(w http.ResponseWriter, r *http.Request) {
+	var req ServiceActionRequest
+	if err := readJSON(r, &req); err != nil {
+		a.reply(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	raw := r.FormValue("domains")
-	domains := splitDomains(raw)
-
-	if len(domains) == 0 {
-		http.Redirect(w, r, "/ui/?msg=Empty", http.StatusSeeOther)
-		return
+	var err error
+	switch req.Action {
+	case "start":
+		err = a.reload.Start()
+	case "restart":
+		err = a.reload.Restart()
+	case "reload":
+		err = a.reload.Reload()
+	case "stop":
+		err = a.reload.Stop()
+	default:
+		err = fmt.Errorf("Invalid action requested")
 	}
 
-	added, skipped, removed, err := a.store.MergeMany(domains)
 	if err != nil {
-		http.Redirect(w, r, "/ui/?msg=Add+failed", http.StatusSeeOther)
+		a.reply(w, http.StatusInternalServerError, "Failed to run action: "+err.Error())
 		return
 	}
 
-	// reload только если были изменения
+	a.reply(w, http.StatusOK, fmt.Sprintf("FakeDNS service %sed!", req.Action))
+}
+
+func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
+	var req AddDomainRequest
+	if err := readJSON(r, &req); err != nil {
+		a.reply(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	normalized := NormalizeDomains(req.Domains)
+	if len(normalized) == 0 {
+		a.reply(w, http.StatusBadRequest, "No valid domains provided")
+		return
+	}
+
+	if len(normalized) != len(req.Domains) {
+		a.reply(w, http.StatusBadRequest, "Some domain entries are invalid")
+		return
+	}
+
+	added, skipped, removed, err := a.store.MergeMany(normalized)
+	if err != nil {
+		a.reply(w, http.StatusInternalServerError, "Failed to update storage: "+err.Error())
+		return
+	}
+
+	// reload only if changed
 	if added > 0 || removed > 0 {
 		if err := a.reload.Reload(); err != nil {
-			http.Redirect(w, r, "/ui/?msg=Changed,+but+reload+failed", http.StatusSeeOther)
+			a.reply(w, http.StatusInternalServerError, "Changes saved, but service reload failed: "+err.Error())
 			return
 		}
-		http.Redirect(w, r, "/ui/?msg=Done", http.StatusSeeOther)
+		a.reply(w, http.StatusOK, "Domain(s) added")
 		return
 	}
 
 	if skipped > 0 {
-		http.Redirect(w, r, "/ui/?msg=No+changes", http.StatusSeeOther)
+		a.reply(w, http.StatusNoContent, "No changes")
 		return
 	}
 
-	http.Redirect(w, r, "/ui/?msg=No+changes", http.StatusSeeOther)
+	a.reply(w, http.StatusNoContent, "No changes")
 }
 
 func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	var req RemoveDomainRequest
+	if err := readJSON(r, &req); err != nil {
+		a.reply(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	target := NormalizeDomain(r.FormValue("domain"))
-	if target == "" {
-		http.Redirect(w, r, "/ui/?msg=Empty+domain", http.StatusSeeOther)
+	if req.Domain = NormalizeDomain(req.Domain); req.Domain == "" {
+		a.reply(w, http.StatusBadRequest, "Domain is invalid")
 		return
 	}
 
-	removed, err := a.store.Delete(target)
+	removed, err := a.store.Delete(req.Domain)
 	if err != nil {
-		http.Redirect(w, r, "/ui/?msg=Delete+failed", http.StatusSeeOther)
+		a.reply(w, http.StatusInternalServerError, "Failed to delete from storage: "+err.Error())
 		return
 	}
 	if !removed {
-		http.Redirect(w, r, "/ui/?msg=Not+found", http.StatusSeeOther)
+		a.reply(w, http.StatusNotFound, "Domain not found")
 		return
 	}
 
 	if err := a.reload.Reload(); err != nil {
-		http.Redirect(w, r, "/ui/?msg=Deleted,+but+reload+failed", http.StatusSeeOther)
+		a.reply(w, http.StatusInternalServerError, "Deleted, but service reload failed: "+err.Error())
 		return
 	}
 
-	http.Redirect(w, r, "/ui/?msg=Deleted", http.StatusSeeOther)
+	a.reply(w, http.StatusOK, "Deleted")
 }
 
 func (a *App) handleListDomains(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	domains, err := a.store.List()
 	if err != nil {
-		http.Error(w, "failed to read domains", http.StatusInternalServerError)
+		a.reply(w, http.StatusInternalServerError, "Failed to read domains: "+err.Error())
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(w).Encode(domains)
+	_ = json.NewEncoder(w).Encode(DomainListResponse{
+		Domains: &domains})
 }
 
 // =========================
 // Utils
 // =========================
-func splitDomains(raw string) []string {
-	lines := strings.Split(raw, "\n")
 
-	seen := make(map[string]struct{})
-	out := make([]string, 0, len(lines))
-
-	for _, line := range lines {
-		d := NormalizeDomain(line)
-		if d == "" {
-			continue
-		}
-		if strings.ContainsAny(d, " \t\r\n/") {
-			continue
-		}
-		if _, ok := seen[d]; ok {
-			continue
-		}
-		seen[d] = struct{}{}
-		out = append(out, d)
+func readJSON[T any](r *http.Request, dst *T) error {
+	if r.Method != http.MethodPost {
+		return fmt.Errorf("Method not allowed, must be POST")
 	}
 
-	return out
+	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+		return fmt.Errorf("Content-type must be application/json")
+	}
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	return nil
 }

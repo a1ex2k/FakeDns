@@ -193,10 +193,25 @@ func writeDomains(path string, domains []string) error {
 }
 
 func NormalizeDomain(s string) string {
+	if s == "" {
+		return s
+	}
 	s = strings.TrimSpace(s)
 	s = strings.TrimSuffix(s, ".")
 	s = strings.ToLower(s)
 	return s
+}
+
+func NormalizeDomains(domains []string) []string {
+	out := make([]string, 0, len(domains))
+
+	for _, d := range domains {
+		if nd := NormalizeDomain(d); nd != "" {
+			out = append(out, nd)
+		}
+	}
+
+	return out
 }
 
 func isCoveredByParent(domain string, existing map[string]struct{}) bool {

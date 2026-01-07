@@ -18,6 +18,8 @@ start_instance() {
     config_get catch_all_port "$section" 'catch_all_port' '0'
     config_get fwmark "$section" 'fwmark' '0x80000000'
     config_get upstream "$section" 'upstream' '8.8.8.8:53'
+    config_get fake4 "$section" 'fake4' '198.18.0.0/15'
+    config_get fake6 "$section" 'fake6' 'abcd:bad:c0de::/64'
 
     procd_open_instance "main"
     procd_set_param command /usr/bin/fakedns
@@ -28,6 +30,8 @@ start_instance() {
     procd_append_param command --port "$port"
     procd_append_param command --fwmark "$fwmark"
     procd_append_param command --upstream "$upstream"
+    procd_append_param command --fake4 "$fake4"
+    procd_append_param command --fake6 "$fake6"
 
     # Only add catch-all if a port is specified (greater than 0)
     if [ "$catch_all_port" -gt 0 ]; then
