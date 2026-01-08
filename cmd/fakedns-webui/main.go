@@ -21,7 +21,7 @@ func main() {
 	if err != nil {
 		if errors.Is(err, ErrAuthNotInitialized) {
 			log.Println("Auth enabled but password not initialized. Run: sudo fakedns-webui passwd")
-			os.Exit(3) // или 0 для варианта A
+			os.Exit(3)
 		}
 		log.Fatal(err)
 	}

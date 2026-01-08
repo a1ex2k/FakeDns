@@ -128,7 +128,7 @@ func (m *FakeIPManager) GetFakeIPv6(realIP net.IP) net.IP {
 	fakeIP = IPv6FromUint64(m.ipv6SubnetHigh, index)
 
 	if err := m.addNftRule6Callback(realIP, fakeIP); err != nil {
-		m.nextIPv6Counter.Add(^uint64(0)) // decrement on failure
+		m.nextIPv6Counter.Add(^uint64(0))
 		return nil
 	}
 

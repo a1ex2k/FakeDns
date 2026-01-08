@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/miekg/dns"
 )
 
@@ -18,13 +20,14 @@ func main() {
 	fwmark := flag.Uint("fwmark", defaultFwMark, "Fwmark to set on packets")
 	fake4CIDR := flag.String("fake4", defaultFake4CIDR, "IPv4 fake IP CIDR")
 	fake6CIDR := flag.String("fake6", defaultFake6CIDR, "IPv6 fake IP CIDR (recommended /64)")
-
 	catchAllPort := flag.Uint("catch-all-port", 0, "Port for faking all DNS requests")
 	upstreamResolver := flag.String("upstream", defaultUpstream, "Upstream DNS resolver (host:port)")
+	autoReload := flag.Bool("autoreload", true, "Auto-reload (whether to track changes of domains file)")
 
 	flag.Parse()
 	skipCatchAll := *catchAllPort == 0
 	log.Printf("Domains file:   %s", *domainsFile)
+	log.Printf("Auto-reload:    %v", *autoReload)
 	log.Printf("Firewall mark:  %x", *fwmark)
 	log.Printf("Fake IPv4 CIDR: %s", *fake4CIDR)
 	log.Printf("Fake IPv6 CIDR: %s", *fake6CIDR)
@@ -85,6 +88,29 @@ func main() {
 		}
 	}
 
+	var watcher *fsnotify.Watcher
+	var watcherEvents chan fsnotify.Event
+	var watcherErrors chan error
+	var debounceTimer *time.Timer
+
+	if *autoReload {
+		var err error
+		watcher, err = fsnotify.NewWatcher()
+		if err != nil {
+			log.Fatalf("FATAL: Failed to create file watcher: %v", err)
+		}
+		defer watcher.Close()
+
+		if err := watcher.Add(*domainsFile); err != nil {
+			log.Printf("WARNING: Failed to add %s to watcher: %v", *domainsFile, err)
+		} else {
+			log.Printf("Tracking changes in %s", *domainsFile)
+		}
+
+		watcherEvents = watcher.Events
+		watcherErrors = watcher.Errors
+	}
+
 	log.Printf("Starting FakeDNS server on %s...", *listenIPStr)
 
 	sigs := make(chan os.Signal, 1)
@@ -124,6 +150,35 @@ func main() {
 				log.Println("FakeDNS Go application finished.")
 				return
 			}
+		case event, ok := <-watcherEvents:
+			if !ok {
+				return
+			}
+			if event.Has(fsnotify.Write) || event.Has(fsnotify.Rename) || event.Has(fsnotify.Create) {
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(time.Second, func() {
+					log.Printf("File modified (%s), reloading domains list...", event.Op)
+					if err := domainsList.Load(); err != nil {
+						log.Printf("ERROR: Failed to auto-reload domains file: %v", err)
+					} else {
+						log.Println("Domains list auto-reloaded successfully.")
+					}
+
+					if watcher != nil {
+						_ = watcher.Remove(*domainsFile)
+						if err := watcher.Add(*domainsFile); err != nil {
+							log.Printf("ERROR: Could not re-watch file after edit: %v", err)
+						}
+					}
+				})
+			}
+		case err, ok := <-watcherErrors:
+			if !ok {
+				return
+			}
+			log.Printf("Watcher error: %v", err)
 		case err := <-serverFailed:
 			log.Printf("Server failed: %v. Initiating shutdown...", err)
 			CleanupNftables()

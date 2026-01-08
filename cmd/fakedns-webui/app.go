@@ -141,12 +141,7 @@ func (a *App) handleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// reload only if changed
 	if added > 0 || removed > 0 {
-		if err := a.reload.Reload(); err != nil {
-			a.reply(w, http.StatusInternalServerError, "Changes saved, but service reload failed: "+err.Error())
-			return
-		}
 		a.reply(w, http.StatusOK, "Domain(s) added")
 		return
 	}
@@ -178,11 +173,6 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	if !removed {
 		a.reply(w, http.StatusNotFound, "Domain not found")
-		return
-	}
-
-	if err := a.reload.Reload(); err != nil {
-		a.reply(w, http.StatusInternalServerError, "Deleted, but service reload failed: "+err.Error())
 		return
 	}
 

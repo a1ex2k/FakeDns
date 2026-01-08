@@ -5,7 +5,6 @@ import (
 	"os/exec"
 )
 
-// ServiceReloader отвечает ТОЛЬКО за reload systemd-сервиса
 type ServiceReloader struct {
 	service string
 }

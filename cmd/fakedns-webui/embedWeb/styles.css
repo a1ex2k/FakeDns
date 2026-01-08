@@ -22,7 +22,7 @@ body {
 }
 
 .wrap {
-    max-width: 980px;
+    max-width: 1040px;
     margin: 28px auto;
     padding: 0 18px 40px;
 }
@@ -86,6 +86,8 @@ textarea {
     padding: 10px 12px;
     font-family: var(--mono);
     outline: none;
+    margin-bottom: 6px;
+    font-size: 14px;
 }
 
 textarea:focus {

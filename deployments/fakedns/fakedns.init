@@ -20,6 +20,7 @@ start_instance() {
     config_get upstream "$section" 'upstream' '8.8.8.8:53'
     config_get fake4 "$section" 'fake4' '198.18.0.0/15'
     config_get fake6 "$section" 'fake6' 'abcd:bad:c0de::/64'
+    config_get autoreload_int "$section" "autoreload" '1'
 
     procd_open_instance "main"
     procd_set_param command /usr/bin/fakedns
@@ -37,6 +38,10 @@ start_instance() {
     if [ "$catch_all_port" -gt 0 ]; then
         procd_append_param command --catch-all-port "$catch_all_port"
     fi
+
+    local autoreload_str="false"
+    [ "$autoreload_int" -eq 1 ] && autoreload_str="true"
+    procd_append_param command --autoreload="$autoreload_str"
 
     procd_set_param respawn 3600 5 0
     procd_set_param stdout 1

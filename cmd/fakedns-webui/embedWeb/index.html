@@ -13,8 +13,8 @@
             <span class="h1">FakeDNS</span>
         </header>
         <div class="header row">
-            <button class="btn" data-action="start">Start</button>
-            <button class="btn primary" data-action="restart">Restart</button>
+            <button class="btn primary" data-action="start">Start</button>
+            <button class="btn danger" data-action="restart">Restart</button>
             <button class="btn" data-action="reload">Reload</button>
             <button class="btn danger" data-action="stop">Stop</button>
         </div>
@@ -22,9 +22,8 @@
         <div class="grid-container">
             <section class="card">
                 <h2>Add domains</h2>
-                <p class="hint">One domain per line. Normalization is performed automatically.</p>
-                <p class="hint">Service reloads automatically after changing the domain list.</p>
-                <textarea id="domainsInput" name="domains" rows="6"
+                <p class="hint">One domain per line. Normalization performed automatically.</p>
+                <textarea id="domainsInput" name="domains" rows="7"
                     placeholder="example.com&#10;example2.com"></textarea>
 
                 <div class="row">
@@ -39,7 +38,7 @@
                     <button class="btn" data-copyall="dnsmasq">DNSmasq</button>
                     <button class="btn" data-copyall="adguard">AdguardHome</button>
                 </p>
-                <textarea id="domainsPlainTxt" name="domains" rows="8"></textarea>
+                <textarea id="domainsPlainTxt" name="domains" rows="7"></textarea>
             </section>
         </div>
         <section class="card">
