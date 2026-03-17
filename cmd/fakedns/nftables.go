@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"os/exec"
-	"strconv"
 )
 
 func RunNftCommand(args ...string) error {
@@ -28,7 +27,7 @@ func SetupNftables(ipv4Subnet, ipv6Subnet string, fwmarkMask uint) error {
 		if err != nil {
 			return fmt.Errorf("failed to add mangle chain: %w", err)
 		}
-		fwmarkString := strconv.FormatUint(uint64(fwmarkMask), 16)
+		fwmarkString := fmt.Sprintf("0x%x", fwmarkMask)
 		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "meta mark set ct mark &", fwmarkString)
 		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip daddr", ipv4Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)
 		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip6 daddr", ipv6Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)

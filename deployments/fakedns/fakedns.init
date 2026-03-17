@@ -16,7 +16,7 @@ start_instance() {
     config_get listen "$section" 'listen' '127.0.0.1'
     config_get port "$section" 'port' '50053'
     config_get catch_all_port "$section" 'catch_all_port' '0'
-    config_get fwmark "$section" 'fwmark' '0x80000000'
+    config_get fwmark "$section" 'fwmark' '2147483648'
     config_get upstream "$section" 'upstream' '8.8.8.8:53'
     config_get fake4 "$section" 'fake4' '198.18.0.0/15'
     config_get fake6 "$section" 'fake6' 'abcd:bad:c0de::/64'

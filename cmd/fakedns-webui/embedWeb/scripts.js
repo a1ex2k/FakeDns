@@ -49,7 +49,7 @@
             var resultData = null;
             try {
                 const contentType = response.headers.get("Content-Type");
-                if (contentType?.includes("application/json")) {
+                if (responce.status != 204 && contentType?.includes("application/json")) {
                     resultData = await response.json();
                     isJson = resultData != null;
                 }

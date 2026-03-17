@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -46,7 +47,7 @@ func main() {
 	}
 	log.Printf("Upstream DNS:        %s", *upstreamResolver)
 	if *fwmarkMask > 0 {
-		log.Printf("Firewall mark mask:  %x", *fwmarkMask)
+		log.Printf("Firewall mark mask:  0x%x", *fwmarkMask)
 	}
 
 	if err := SetupNftables(*fake4CIDR, *fake6CIDR, *fwmarkMask); err != nil {
@@ -84,7 +85,7 @@ func main() {
 			dnsClient:     dnsClient,
 		}
 		fakeByListUdpServer := &dns.Server{
-			Addr:    *listenIPStr + ":" + strconv.FormatUint(uint64(*port), 10),
+			Addr:    fmt.Sprintf("%s:%d", *listenIPStr, *port),
 			Net:     "udp",
 			Handler: handler,
 			UDPSize: maxUDPSize,
@@ -107,7 +108,7 @@ func main() {
 			dnsClient:     dnsClient,
 		}
 		fakeAlllUdpServer := &dns.Server{
-			Addr:    *listenIPStr + ":" + strconv.FormatUint(uint64(*catchAllPort), 10),
+			Addr:    fmt.Sprintf("%s:%d", *listenIPStr, *catchAllPort),
 			Net:     "udp",
 			Handler: catchAllHandler,
 			UDPSize: maxUDPSize,
