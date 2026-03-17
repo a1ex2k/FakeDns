@@ -18,23 +18,24 @@ func RunNftCommand(args ...string) error {
 	return nil
 }
 
-func SetupNftables(ipv4Subnet, ipv6Subnet string, routingMark uint) error {
+func SetupNftables(ipv4Subnet, ipv6Subnet string, fwmarkMask uint) error {
 	log.Println("Attempting nftables setup...")
 	_ = RunNftCommand("add", "table", nftTableName)
 
-	mangleSpec := fmt.Sprintf("type filter hook prerouting priority %s", nftMarkingHookPrio)
-	err := RunNftCommand("add", "chain", nftTableName, nftMarkingChainName, "{", mangleSpec, ";", "}")
-	if err != nil {
-		return fmt.Errorf("failed to add mangle chain: %w", err)
+	if fwmarkMask > 0 {
+		mangleSpec := fmt.Sprintf("type filter hook prerouting priority %s", nftMarkingHookPrio)
+		err := RunNftCommand("add chain", nftTableName, nftMarkingChainName, "{", mangleSpec, ";}")
+		if err != nil {
+			return fmt.Errorf("failed to add mangle chain: %w", err)
+		}
+		fwmarkString := strconv.FormatUint(uint64(fwmarkMask), 16)
+		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "meta mark set ct mark &", fwmarkString)
+		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip daddr", ipv4Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)
+		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip6 daddr", ipv6Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)
 	}
 
-	fwmarkString := strconv.FormatUint(uint64(routingMark), 10)
-	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "meta", "mark", "set", "ct", "mark")
-	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip", "daddr", ipv4Subnet, "meta", "mark", "set", fwmarkString, "ct", "mark", "set", "meta", "mark")
-	RunNftCommand("add", "rule", nftTableName, nftMarkingChainName, "ip6", "daddr", ipv6Subnet, "meta", "mark", "set", fwmarkString, "ct", "mark", "set", "meta", "mark")
-
 	natSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
-	err = RunNftCommand("add", "chain", nftTableName, nftChainName, "{", natSpec, ";", "}")
+	err := RunNftCommand("add chain", nftTableName, nftChainName, "{", natSpec, ";}")
 	if err != nil {
 		return fmt.Errorf("failed to add nat chain: %w", err)
 	}

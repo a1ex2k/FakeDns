@@ -33,11 +33,7 @@ start_instance() {
     procd_append_param command --upstream "$upstream"
     procd_append_param command --fake4 "$fake4"
     procd_append_param command --fake6 "$fake6"
-
-    # Only add catch-all if a port is specified (greater than 0)
-    if [ "$catch_all_port" -gt 0 ]; then
-        procd_append_param command --catch-all-port "$catch_all_port"
-    fi
+    procd_append_param command --catch-all-port "$catch_all_port"
 
     local autoreload_str="false"
     [ "$autoreload_int" -eq 1 ] && autoreload_str="true"
