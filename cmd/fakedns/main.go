@@ -17,7 +17,7 @@ func main() {
 	domainsFile := flag.String("domains", defaultDomainsFile, "Path to the domains file")
 	listenIPStr := flag.String("listen", defaultListenIp, "IP address to listen on")
 	port := flag.Uint("port", 0, "Port for faking by list")
-	fwmarkMask := flag.Uint("fwmark", defaultFwMarkMask, "Fwmark mask to set on packets/connnection")
+	fwmarkMask := UintFlag("fwmark", 0, "Fwmark mask to set on packets/connnection")
 	fake4CIDR := flag.String("fake4", defaultFake4CIDR, "IPv4 fake IP CIDR")
 	fake6CIDR := flag.String("fake6", defaultFake6CIDR, "IPv6 fake IP CIDR (recommended /64)")
 	catchAllPort := flag.Uint("catch-all-port", 0, "Port for faking all DNS requests")
@@ -201,4 +201,19 @@ func main() {
 			return
 		}
 	}
+}
+
+func UintFlag(name string, value uint, usage string) *uint {
+	p := new(uint)
+	*p = value
+	flag.Func(name, usage, func(s string) error {
+		// strconv.IntSize ensures it respects the architecture's uint size (32 or 64 bit)
+		val, err := strconv.ParseUint(s, 0, strconv.IntSize)
+		if err != nil {
+			return err
+		}
+		*p = uint(val)
+		return nil
+	})
+	return p
 }
