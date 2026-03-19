@@ -45,7 +45,7 @@ Section: net
 Priority: optional
 Architecture: $ARCH
 Maintainer: a1ex2k
-Depends: nftables, curl
+Depends: nftables, curl, libstdc++6
 Description: FakeDNS Core Server (C++)
  Redirects traffic via nftables DNAT.
 EOT

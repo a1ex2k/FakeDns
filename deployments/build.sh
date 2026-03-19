@@ -40,20 +40,14 @@ else
             CXX_BIN="aarch64-linux-gnu-g++"
             ;;
         "mipsel_24kc")
-            if command -v mipsel-openwrt-linux-musl-g++ >/dev/null 2>&1; then
-                CXX_BIN="mipsel-openwrt-linux-musl-g++"
-            elif command -v mipsel-linux-gnu-g++ >/dev/null 2>&1; then
-                CXX_BIN="mipsel-linux-gnu-g++"
-            else
-                CXX_BIN="mipsel-openwrt-linux-musl-g++"
-            fi
+            CXX_BIN="mipsel-openwrt-linux-musl-g++"
             ;;
         *)
             CXX_BIN="g++"
             ;;
     esac
 fi
-CXX_FLAGS="${CXXFLAGS:--O3 -DNDEBUG -flto -pipe -std=c++20 -pthread}"
+CXX_FLAGS="${CXXFLAGS:--O3 -DNDEBUG -flto -pipe -std=c++17 -pthread}"
 EXTRA_LDFLAGS="${FAKEDNS_LDFLAGS:-}"
 
 if [ "$ARCH" = "mipsel_24kc" ] && [ -z "${CXXFLAGS:-}" ]; then
@@ -61,15 +55,20 @@ if [ "$ARCH" = "mipsel_24kc" ] && [ -z "${CXXFLAGS:-}" ]; then
     CXX_FLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
 fi
 
-if [ "$ARCH" = "mipsel_24kc" ] && [ -z "$EXTRA_LDFLAGS" ]; then
-    # Some 32-bit toolchains need explicit libatomic for larger atomics.
-    EXTRA_LDFLAGS="-latomic"
-fi
-
 echo "Compiling C++ core with: $CXX_BIN"
 if ! command -v "$CXX_BIN" >/dev/null 2>&1; then
     echo "Build failed: compiler '$CXX_BIN' not found in PATH"
     exit 1
+fi
+
+if [ "$ARCH" = "mipsel_24kc" ]; then
+    TARGET_TRIPLE="$("$CXX_BIN" -dumpmachine 2>/dev/null || true)"
+    if [[ "$TARGET_TRIPLE" != *"musl"* ]]; then
+        echo "Build failed: mipsel_24kc requires OpenWrt musl toolchain."
+        echo "Detected target triple: ${TARGET_TRIPLE:-unknown}"
+        echo "Use mipsel-openwrt-linux-musl-g++ from the matching OpenWrt SDK."
+        exit 1
+    fi
 fi
 
 echo "Compiler version:"

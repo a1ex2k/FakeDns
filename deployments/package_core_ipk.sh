@@ -77,7 +77,7 @@ Section: net
 Priority: optional
 Architecture: $PKG_ARCH
 Maintainer: a1ex2k
-Depends: nftables, kmod-nft-nat
+Depends: nftables, kmod-nft-nat, libstdcpp
 Description: FakeDNS Core Server
  Redirects traffic via nftables DNAT for target subnets.
 EOT

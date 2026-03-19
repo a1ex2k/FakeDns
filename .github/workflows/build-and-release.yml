@@ -49,12 +49,14 @@ jobs:
             binutils \
             g++ \
             g++-aarch64-linux-gnu \
-            g++-mipsel-linux-gnu
+            wget \
+            xz-utils
 
       - name: Build and Package
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
+          OPENWRT_SDK_URL: ${{ vars.OPENWRT_SDK_URL }}
         run: |
           set -euxo pipefail
           mkdir -p dist
@@ -68,9 +70,25 @@ jobs:
             export CXX=aarch64-linux-gnu-g++
           fi
           if [ "$ARCH" == "mipsel_24kc" ]; then
-            export CXX=mipsel-linux-gnu-g++
+            if [ -z "${OPENWRT_SDK_URL:-}" ]; then
+              echo "::error::OPENWRT_SDK_URL repository variable is not set."
+              echo "::error::Set it to the matching OpenWrt SDK tar.xz URL for your router firmware target."
+              exit 1
+            fi
+
+            mkdir -p /tmp/openwrt-sdk
+            wget -qO /tmp/openwrt-sdk.tar.xz "$OPENWRT_SDK_URL"
+            tar -xf /tmp/openwrt-sdk.tar.xz -C /tmp/openwrt-sdk --strip-components=1
+
+            TOOLCHAIN_BIN="$(find /tmp/openwrt-sdk/staging_dir -type d -path "*/toolchain-*/bin" | head -n1)"
+            if [ -z "$TOOLCHAIN_BIN" ]; then
+              echo "::error::OpenWrt SDK toolchain bin directory not found."
+              exit 1
+            fi
+
+            export PATH="$TOOLCHAIN_BIN:$PATH"
+            export CXX=mipsel-openwrt-linux-musl-g++
             export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
-            export FAKEDNS_LDFLAGS="-latomic"
           fi
           command -v "${CXX:-g++}" || true
           "${CXX:-g++}" --version || true
