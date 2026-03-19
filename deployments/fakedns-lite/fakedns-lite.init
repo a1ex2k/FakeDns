@@ -8,7 +8,7 @@ start_instance() {
     local section="$1"
     local listen listeners upstream enabled fake4 fake6 workers
 
-    # Read values from /etc/config/fakedns
+    # Read values from /etc/config/fakedns-lite
     config_get_bool enabled "$section" 'enabled' 0
     [ "$enabled" -eq 0 ] && return
 
@@ -20,7 +20,7 @@ start_instance() {
     config_get workers "$section" 'workers' '0'
 
     procd_open_instance "main"
-    procd_set_param command /usr/bin/fakedns
+    procd_set_param command /usr/bin/fakedns-lite
     
     # Append arguments
     procd_append_param command --listen "$listen"
@@ -48,13 +48,13 @@ start_instance() {
 }
 
 start_service() {
-    config_load fakedns
-    config_foreach start_instance 'fakedns'
+    config_load "fakedns-lite"
+    config_foreach start_instance 'fakedns_lite'
 }
 
 service_triggers() {
-    # This makes the service restart automatically if /etc/config/fakedns is changed
-    procd_add_reload_trigger "fakedns"
+    # This makes the service restart automatically if /etc/config/fakedns-lite is changed
+    procd_add_reload_trigger "fakedns-lite"
 }
 
 reload_service() { restart; }

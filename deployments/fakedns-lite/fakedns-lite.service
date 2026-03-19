@@ -6,7 +6,7 @@ Requires=nftables.service
 [Service]
 Type=simple
 User=root
-ExecStart=/usr/bin/fakedns \
+ExecStart=/usr/bin/fakedns-lite \
     --listen=127.0.0.1 \
     --listener=50053@0x80000000 \
     --fake4=198.18.0.0/15 \

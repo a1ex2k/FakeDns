@@ -1,10 +1,10 @@
 #!/bin/bash
 # Usage: ./package_deb.sh <arch> <version>
-# This script bundles both fakedns and fakedns-webui into one .deb
+# This script packages the C++ FakeDNS core into one .deb
 
 ARCH=$1
 VERSION=$2
-PACKAGE_NAME="fakedns-full"
+PACKAGE_NAME="fakedns-lite"
 
 CUR_DIR=$(pwd)
 DIST_DIR="$CUR_DIR/dist"
@@ -19,24 +19,23 @@ mkdir -p "$DIST_DIR"
 
 echo "Creating All-in-One Debian Package for $ARCH..."
 
-# 2. Copy Binaries
-for COMPONENT in "fakedns" "fakedns-webui"; do
-    if [ -f "bin/$ARCH/$COMPONENT" ]; then
-        cp "bin/$ARCH/$COMPONENT" "$ROOT/usr/bin/"
-        chmod +x "$ROOT/usr/bin/$COMPONENT"
-        echo "Added Binary: $COMPONENT"
-    else
-        echo "Error: bin/$ARCH/$COMPONENT not found!"
-        exit 1
-    fi
+# 2. Copy Binary
+COMPONENT="fakedns-lite"
+if [ -f "bin/$ARCH/$COMPONENT" ]; then
+    cp "bin/$ARCH/$COMPONENT" "$ROOT/usr/bin/"
+    chmod +x "$ROOT/usr/bin/$COMPONENT"
+    echo "Added Binary: $COMPONENT"
+else
+    echo "Error: bin/$ARCH/$COMPONENT not found!"
+    exit 1
+fi
 
-    # 3. Copy Systemd Services
-    SERVICE_FILE="deployments/$COMPONENT/$COMPONENT.service"
-    if [ -f "$SERVICE_FILE" ]; then
-        cp "$SERVICE_FILE" "$ROOT/lib/systemd/system/"
-        echo "Added Service: $COMPONENT.service"
-    fi
-done
+# 3. Copy Systemd Service
+SERVICE_FILE="deployments/$COMPONENT/$COMPONENT.service"
+if [ -f "$SERVICE_FILE" ]; then
+    cp "$SERVICE_FILE" "$ROOT/lib/systemd/system/"
+    echo "Added Service: $COMPONENT.service"
+fi
 
 # 4. Create Control File
 cat <<EOT > "$ROOT/DEBIAN/control"
@@ -47,36 +46,30 @@ Priority: optional
 Architecture: $ARCH
 Maintainer: a1ex2k
 Depends: nftables, curl
-Description: FakeDNS Suite (Core + WebUI)
- Redirects traffic via nftables DNAT and provides a management UI.
+Description: FakeDNS Core Server (C++)
+ Redirects traffic via nftables DNAT.
 EOT
 
-# 5. Create postinst Script (To enable/start services on install)
+# 5. Create postinst Script (To enable/start service on install)
 cat <<EOT > "$ROOT/DEBIAN/postinst"
 #!/bin/sh
 set -e
 if [ "\$1" = "configure" ]; then
     systemctl daemon-reload >/dev/null 2>&1 || true
-    
-    # Enable and Start both services
-    for svc in fakedns fakedns-webui; do
-        systemctl enable "\$svc" >/dev/null 2>&1 || true
-        systemctl start "\$svc" >/dev/null 2>&1 || true
-    done
+    systemctl enable "fakedns-lite" >/dev/null 2>&1 || true
+    systemctl start "fakedns-lite" >/dev/null 2>&1 || true
 fi
 exit 0
 EOT
 chmod 755 "$ROOT/DEBIAN/postinst"
 
-# 6. Create prerm Script (To stop/disable services on removal)
+# 6. Create prerm Script (To stop/disable service on removal)
 cat <<EOT > "$ROOT/DEBIAN/prerm"
 #!/bin/sh
 set -e
 if [ "\$1" = "remove" ]; then
-    for svc in fakedns fakedns-webui; do
-        systemctl stop "\$svc" >/dev/null 2>&1 || true
-        systemctl disable "\$svc" >/dev/null 2>&1 || true
-    done
+    systemctl stop "fakedns-lite" >/dev/null 2>&1 || true
+    systemctl disable "fakedns-lite" >/dev/null 2>&1 || true
 fi
 exit 0
 EOT

@@ -1,4 +1,4 @@
-config fakedns 'main'
+config fakedns_lite 'main'
 	option enabled '1'
 	option listen '127.0.0.1'
 	option listeners '50053@0x80000000'

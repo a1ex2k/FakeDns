@@ -3,14 +3,14 @@
 
 ARCH=$1
 VERSION=$2
-PACKAGE_NAME="fakedns"
+PACKAGE_NAME="fakedns-lite"
 
 if [ -z "$ARCH" ] || [ -z "$VERSION" ]; then
     echo "Usage: $0 <arch> <version>"
     exit 1
 fi
 
-# Maps GitHub/Go arch names to OpenWrt opkg names
+# Maps build arch names to OpenWrt opkg names
 PKG_ARCH=$ARCH
 case "$ARCH" in
     "arm64")
@@ -61,7 +61,7 @@ else
 fi
 
 # 3.5 Copy Configuration File (The "OpenWrt Way")
-CONFIG_SRC="deployments/fakedns.uciconf"
+CONFIG_SRC="deployments/fakedns-lite/fakedns-lite.uciconf"
 if [ -f "$CONFIG_SRC" ]; then
     cp "$CONFIG_SRC" "$BUILD_DIR/etc/config/$PACKAGE_NAME"
     echo "/etc/config/$PACKAGE_NAME" > "$BUILD_DIR/CONTROL/conffiles"
@@ -87,7 +87,7 @@ cat <<EOT > "$BUILD_DIR/CONTROL/postinst"
 #!/bin/sh
 if [ -z "\$IPKG_INSTROOT" ]; then
     # OpenWrt's opkg handles /etc/config automatically via the 'conffiles' list.
-    # If the user modified the config, opkg installs the new one as fakedns-opkg.
+    # If the user modified the config, opkg installs the new one as fakedns-lite-opkg.
     
     /etc/init.d/$PACKAGE_NAME enable
     /etc/init.d/$PACKAGE_NAME restart
