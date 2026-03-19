@@ -63,7 +63,7 @@ bool FakeIpManager::GetFakeIPv6(const IPv6Addr& real_ip, uint32_t fwmark, IPv6Ad
     return true;
   }
 
-  const uint64_t index = next_v6_.fetch_add(1, std::memory_order_relaxed) + 1;
+  const uint64_t index = static_cast<uint64_t>(next_v6_.fetch_add(1, std::memory_order_relaxed)) + 1;
   if (index > v6_pool_.max_count) {
     return false;
   }

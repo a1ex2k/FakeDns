@@ -56,7 +56,7 @@ class FakeIpManager final {
   std::shared_mutex v4_mutex_;
   std::shared_mutex v6_mutex_;
   std::atomic<uint32_t> next_v4_{0};
-  std::atomic<uint64_t> next_v6_{0};
+  std::atomic<uint32_t> next_v6_{0};
 };
 
 }  // namespace fakedns

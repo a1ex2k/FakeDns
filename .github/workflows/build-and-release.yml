@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.get_version.outputs.version }}
       is_tag: ${{ steps.get_version.outputs.is_tag }}
@@ -33,7 +33,7 @@ jobs:
 
   build_and_package:
     needs: prepare
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         arch: [amd64, arm64, mipsel_24kc]
@@ -56,17 +56,24 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
         run: |
+          set -euxo pipefail
           mkdir -p dist
           chmod +x deployments/*.sh
 
           # 1. Select compiler for architecture
           unset CXX
+          unset CXXFLAGS
+          unset FAKEDNS_LDFLAGS
           if [ "$ARCH" == "arm64" ]; then
             export CXX=aarch64-linux-gnu-g++
           fi
           if [ "$ARCH" == "mipsel_24kc" ]; then
             export CXX=mipsel-linux-gnu-g++
+            export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
+            export FAKEDNS_LDFLAGS="-latomic"
           fi
+          command -v "${CXX:-g++}" || true
+          "${CXX:-g++}" --version || true
 
           # 2. Build core binary
           ./deployments/build.sh $ARCH fakedns-lite
@@ -91,7 +98,7 @@ jobs:
     needs: [prepare, build_and_package]
     # THIS IS THE KEY LINE: Only run if the trigger was a tag
     if: needs.prepare.outputs.is_tag == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
