@@ -6,19 +6,34 @@
 #include <cstring>
 
 namespace fakedns {
+namespace {
+
+inline uint64_t HostToBigEndian64(uint64_t value) {
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+  return __builtin_bswap64(value);
+#else
+  return value;
+#endif
+}
+
+inline uint64_t BigEndianToHost64(uint64_t value) {
+  return HostToBigEndian64(value);
+}
+
+}  // namespace
 
 IPv6Addr IpAddress::FromRawV6(const uint8_t* bytes) {
   IPv6Addr addr {};
   std::memcpy(&addr.hi, bytes, sizeof(addr.hi));
   std::memcpy(&addr.lo, bytes + sizeof(addr.hi), sizeof(addr.lo));
-  addr.hi = be64toh(addr.hi);
-  addr.lo = be64toh(addr.lo);
+  addr.hi = BigEndianToHost64(addr.hi);
+  addr.lo = BigEndianToHost64(addr.lo);
   return addr;
 }
 
 void IpAddress::ToRawV6(const IPv6Addr& addr, uint8_t* bytes) {
-  const uint64_t hi = htobe64(addr.hi);
-  const uint64_t lo = htobe64(addr.lo);
+  const uint64_t hi = HostToBigEndian64(addr.hi);
+  const uint64_t lo = HostToBigEndian64(addr.lo);
   std::memcpy(bytes, &hi, sizeof(hi));
   std::memcpy(bytes + sizeof(hi), &lo, sizeof(lo));
 }

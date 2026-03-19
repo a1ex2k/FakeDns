@@ -34,7 +34,8 @@ class FakeIpManager final {
 
   struct IPv4KeyHash {
     std::size_t operator()(const IPv4Key& key) const {
-      return (static_cast<std::size_t>(key.real_ip) << 32) ^ static_cast<std::size_t>(key.fwmark);
+      const uint64_t combined = (static_cast<uint64_t>(key.real_ip) << 32) | static_cast<uint64_t>(key.fwmark);
+      return std::hash<uint64_t>{}(combined);
     }
   };
 
