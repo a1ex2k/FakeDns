@@ -20,13 +20,13 @@ type FakeIPManager struct {
 	addNftRule4Callback func(realIP net.IP, fakeIP net.IP) error
 	addNftRule6Callback func(realIP net.IP, fakeIP net.IP) error
 	nextIPv4Counter     atomic.Uint32
-	nextIPv6Counter     atomic.Uint64
+	nextIPv6Counter     atomic.Uint32
 
 	ipv4SubnetBase uint32
 	ipv4MaxCount   uint32
 
 	ipv6SubnetHigh uint64
-	ipv6MaxCount   uint64
+	ipv6MaxCount   uint32
 }
 
 func NewFakeIPManager(
@@ -46,9 +46,18 @@ func NewFakeIPManager(
 		return nil, err
 	}
 
+	v4Cap := int(v4max)
+	if v4Cap < 0 {
+		v4Cap = 0
+	}
+	v6Cap := int(v6max)
+	if v6Cap < 0 {
+		v6Cap = 0
+	}
+
 	return &FakeIPManager{
-		ipv4Map:             make(map[IPv4Addr]net.IP),
-		ipv6Map:             make(map[IPv6Addr]net.IP),
+		ipv4Map:             make(map[IPv4Addr]net.IP, v4Cap),
+		ipv6Map:             make(map[IPv6Addr]net.IP, v6Cap),
 		addNftRule4Callback: nftCallback4,
 		addNftRule6Callback: nftCallback6,
 		ipv4SubnetBase:      v4base,
@@ -125,10 +134,10 @@ func (m *FakeIPManager) GetFakeIPv6(realIP net.IP) net.IP {
 	if index > m.ipv6MaxCount {
 		return nil
 	}
-	fakeIP = IPv6FromUint64(m.ipv6SubnetHigh, index)
+	fakeIP = IPv6FromUint64(m.ipv6SubnetHigh, uint64(index))
 
 	if err := m.addNftRule6Callback(realIP, fakeIP); err != nil {
-		m.nextIPv6Counter.Add(^uint64(0))
+		m.nextIPv6Counter.Add(^uint32(0))
 		return nil
 	}
 
@@ -181,7 +190,7 @@ func parseIPv4Pool(cidr string) (base uint32, maxCount uint32, err error) {
 	return base, usable, nil
 }
 
-func parseIPv6Pool(cidr string) (hi uint64, maxCount uint64, err error) {
+func parseIPv6Pool(cidr string) (hi uint64, maxCount uint32, err error) {
 	ip, ipnet, err := net.ParseCIDR(cidr)
 	if err != nil {
 		return 0, 0, err

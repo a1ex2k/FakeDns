@@ -5,6 +5,8 @@ const (
 	nftTableName        = "fake_ip"
 	nftChainName        = "prerouting"
 	nftMarkingChainName = "prerouting_mangle"
+	nftDnat4MapName     = "dnat4_map"
+	nftDnat6MapName     = "dnat6_map"
 	nftHookPrio         = "-101"
 	nftMarkingHookPrio  = "-160"
 

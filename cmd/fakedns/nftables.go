@@ -85,26 +85,48 @@ func SetupNftables(ipv4Subnet, ipv6Subnet string, fwmarkMask uint) error {
 		return fmt.Errorf("failed to add nat chain: %w", err)
 	}
 
+	if err := runNftAllowExists(
+		"add", "map", nftFamily, nftTableName, nftDnat4MapName,
+		"{", "type", "ipv4_addr", ":", "ipv4_addr", ";", "}",
+	); err != nil {
+		return fmt.Errorf("failed to add IPv4 DNAT map: %w", err)
+	}
+	if err := runNftAllowExists(
+		"add", "map", nftFamily, nftTableName, nftDnat6MapName,
+		"{", "type", "ipv6_addr", ":", "ipv6_addr", ";", "}",
+	); err != nil {
+		return fmt.Errorf("failed to add IPv6 DNAT map: %w", err)
+	}
+
+	if err := runNftAllowExists(
+		"add", "rule", nftFamily, nftTableName, nftChainName,
+		"dnat", "ip", "to", "ip", "daddr", "map", "@"+nftDnat4MapName,
+	); err != nil {
+		return fmt.Errorf("failed to add IPv4 DNAT map rule: %w", err)
+	}
+	if err := runNftAllowExists(
+		"add", "rule", nftFamily, nftTableName, nftChainName,
+		"dnat", "ip6", "to", "ip6", "daddr", "map", "@"+nftDnat6MapName,
+	); err != nil {
+		return fmt.Errorf("failed to add IPv6 DNAT map rule: %w", err)
+	}
+
 	log.Println("nftables setup complete with fwmarking and NAT chains.")
 	return nil
 }
 
 func AddDnat4Rule(realIP, fakeIP net.IP) error {
-	ruleArgs := []string{
-		"add", "rule", nftFamily, nftTableName, nftChainName,
-		"ip", "daddr", fakeIP.String(),
-		"dnat", "to", realIP.String(),
-	}
-	return RunNftCommand(ruleArgs...)
+	return runNftAllowExists(
+		"add", "element", nftFamily, nftTableName, nftDnat4MapName,
+		"{", fakeIP.String(), ":", realIP.String(), "}",
+	)
 }
 
 func AddDnat6Rule(realIP, fakeIP net.IP) error {
-	ruleArgs := []string{
-		"add", "rule", nftFamily, nftTableName, nftChainName,
-		"ip6", "daddr", fakeIP.String(),
-		"dnat", "to", realIP.String(),
-	}
-	return RunNftCommand(ruleArgs...)
+	return runNftAllowExists(
+		"add", "element", nftFamily, nftTableName, nftDnat6MapName,
+		"{", fakeIP.String(), ":", realIP.String(), "}",
+	)
 }
 
 func CleanupNftables() error {
