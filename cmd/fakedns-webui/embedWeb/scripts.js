@@ -2,7 +2,6 @@
     const msgEl = document.getElementById("msg");
     const countEl = document.getElementById("count");
     const listEl = document.getElementById("list");
-    const loadingEl = document.getElementById("loading");
     const emptyEl = document.getElementById("empty");
     const addBtn = document.getElementById("addBtn");
     const clearBtn = document.getElementById("clearBtn");
@@ -42,41 +41,42 @@
             options.body = JSON.stringify(data);
             options.headers["Content-Type"] = "application/json";
         }
-        else data = undefined;
+
+        let response;
+        let resultData = null;
 
         try {
-            var response = await fetch(url, options);
-            var resultData = null;
-            try {
-                const contentType = response.headers.get("Content-Type");
-                if (responce.status != 204 && contentType?.includes("application/json")) {
-                    resultData = await response.json();
-                    isJson = resultData != null;
-                }
-            } catch (e) {
-                console.error(e);
-                showMessage(e.message, true);
-            }
-
-            var message = resultData?.message;
-            if (message != null) {
-                showMessage(message, !response.ok);
-            } else if (!response.ok) {
-                if (response.status === 401 || response.status === 403) {
-                    message = "Unauthorized";
-                } else if (response.status
-                    === 404) {
-                    message = "Not Found";
-                } else if (response.status >= 500) {
-                    message = "Server error";
-                } else if (response.status === 400 || response.status >= 404) {
-                    message = "Invalid request";
-                }
-                showMessage(message, true);
-            }
+            response = await fetch(url, options);
         } catch (e) {
             console.error(e);
             showMessage(e.message, true);
+            return { status: 0, data: null };
+        }
+
+        try {
+            const contentType = response.headers.get("Content-Type") || "";
+            if (response.status !== 204 && contentType.includes("application/json")) {
+                resultData = await response.json();
+            }
+        } catch (e) {
+            console.error(e);
+            showMessage("Failed to parse server response", true);
+        }
+
+        let message = resultData?.message;
+        if (message != null) {
+            showMessage(message, !response.ok);
+        } else if (!response.ok) {
+            if (response.status === 401 || response.status === 403) {
+                message = "Unauthorized";
+            } else if (response.status === 404) {
+                message = "Not Found";
+            } else if (response.status >= 500) {
+                message = "Server error";
+            } else if (response.status >= 400) {
+                message = "Invalid request";
+            }
+            showMessage(message, true);
         }
         return { status: response.status, data: resultData };
     }
@@ -157,7 +157,12 @@
     }
 
     async function addHandler(event) {
-        domains = domainsInput.value.split(/\s+/);
+        const domains = domainsInput.value.split(/\s+/).filter(Boolean);
+        if (domains.length === 0) {
+            showMessage("No domains provided", true);
+            return;
+        }
+
         var response = await makeRequest("/api/add", "POST", { domains: domains });
         if (response.status === 200) {
             await loadDomains();

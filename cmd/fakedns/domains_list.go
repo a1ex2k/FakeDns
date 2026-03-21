@@ -18,7 +18,6 @@ type DomainsList struct {
 
 func (d *DomainsList) Load() error {
 	file, err := os.Open(d.filePath)
-	defer file.Close()
 	if err != nil {
 		if os.IsNotExist(err) {
 			// Create empty file (and parent dirs) and continue
@@ -26,10 +25,14 @@ func (d *DomainsList) Load() error {
 				return fmt.Errorf("failed to create directories for '%s': %w", d.filePath, mkErr)
 			}
 			f, createErr := os.OpenFile(d.filePath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
-			if createErr != nil {
+			if createErr != nil && !os.IsExist(createErr) {
 				return fmt.Errorf("failed to create domains file '%s': %w", d.filePath, createErr)
 			}
-			_ = f.Close()
+			if createErr == nil {
+				if closeErr := f.Close(); closeErr != nil {
+					log.Printf("Warning: Failed to close newly-created domains file '%s': %v", d.filePath, closeErr)
+				}
+			}
 
 			// Now open for reading
 			file, err = os.Open(d.filePath)
@@ -42,6 +45,11 @@ func (d *DomainsList) Load() error {
 			return fmt.Errorf("failed to open domains file '%s': %w", d.filePath, err)
 		}
 	}
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("Warning: Failed to close domains file '%s': %v", d.filePath, closeErr)
+		}
+	}()
 
 	domains := make(map[string]struct{})
 	scanner := bufio.NewScanner(file)
@@ -104,22 +112,33 @@ func (d *DomainsList) MatchDomain(queryDomain string, maxLevel int) bool {
 		return false
 	}
 
+	queryDomain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(queryDomain), "."))
+	if queryDomain == "" {
+		return false
+	}
+
+	labelCount := 1 + strings.Count(queryDomain, ".")
+	if maxLevel == 0 || maxLevel > labelCount {
+		maxLevel = labelCount
+	}
+	skipLevels := labelCount - maxLevel
+
 	d.mu.RLock()
 	defer d.mu.RUnlock()
 
-	queryDomain = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(queryDomain), "."))
-	parts := strings.Split(queryDomain, ".")
-	n := len(parts)
-
-	if maxLevel == 0 || maxLevel > n {
-		maxLevel = n
-	}
-
-	for i := n - maxLevel; i < n; i++ {
-		domain := strings.Join(parts[i:], ".")
-		if _, ok := d.targetDomains[domain]; ok {
-			return true
+	suffix := queryDomain
+	for level := 0; ; level++ {
+		if level >= skipLevels {
+			if _, ok := d.targetDomains[suffix]; ok {
+				return true
+			}
 		}
+
+		dotIdx := strings.IndexByte(suffix, '.')
+		if dotIdx == -1 {
+			break
+		}
+		suffix = suffix[dotIdx+1:]
 	}
 	return false
 }

@@ -1,7 +1,8 @@
 package main
 
 const (
-	nftTableName        = "inet fake_ip"
+	nftFamily           = "inet"
+	nftTableName        = "fake_ip"
 	nftChainName        = "prerouting"
 	nftMarkingChainName = "prerouting_mangle"
 	nftHookPrio         = "-101"

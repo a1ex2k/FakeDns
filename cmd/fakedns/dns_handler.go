@@ -19,6 +19,12 @@ type DnsHandler struct {
 }
 
 func (h *DnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+	if len(r.Question) == 0 {
+		log.Printf("%s Received DNS query without question section", h.logPrefix)
+		dns.HandleFailed(w, r)
+		return
+	}
+
 	resp, _, err := h.dnsClient.Exchange(r, h.upstreamAddr)
 	if err != nil {
 		log.Printf("%s Error forwarding query to %s: %v", h.logPrefix, h.upstreamAddr, err)
@@ -33,37 +39,41 @@ func (h *DnsHandler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 	domainName := strings.ToLower(r.Question[0].Name)
 	shouldFake := h.forceFakeAll || h.domainsList.MatchDomain(domainName, h.maxLevel)
-	out := resp.Copy()
-	out.Answer = []dns.RR{}
+	if shouldFake {
+		for i := range resp.Answer {
+			var realIP net.IP
+			var version int
 
-	for _, rr := range resp.Answer {
-		newRR := dns.Copy(rr)
-		var realIP net.IP
-		var isA, isAAAA bool
-		var aRec *dns.A
-		var aaaaRec *dns.AAAA
-		version := 4
-		if aRec, isA = newRR.(*dns.A); isA {
-			realIP = aRec.A
-		} else if aaaaRec, isAAAA = newRR.(*dns.AAAA); isAAAA {
-			realIP = aaaaRec.AAAA
-			version = 6
-		}
-
-		if shouldFake && (isA || isAAAA) {
-			fakeIP := h.fakeIPManager.GetFakeIP(domainName, realIP, version)
-			log.Printf("%s Faking IP for %s: %s -> %s", h.logPrefix, domainName, realIP, fakeIP)
-			if isA {
-				aRec.A = fakeIP
-			} else {
-				aaaaRec.AAAA = fakeIP
+			switch rec := resp.Answer[i].(type) {
+			case *dns.A:
+				realIP = rec.A
+				version = 4
+			case *dns.AAAA:
+				realIP = rec.AAAA
+				version = 6
+			default:
+				continue
 			}
-			newRR.Header().Ttl = fakedRecordTTL
+
+			fakeIP := h.fakeIPManager.GetFakeIP(realIP, version)
+			if fakeIP == nil {
+				log.Printf("%s Failed to allocate fake IP for %s (%s), keeping upstream answer", h.logPrefix, domainName, realIP)
+				continue
+			}
+
+			log.Printf("%s Faking IP for %s: %s -> %s", h.logPrefix, domainName, realIP, fakeIP)
+			switch rec := resp.Answer[i].(type) {
+			case *dns.A:
+				rec.A = fakeIP
+				rec.Hdr.Ttl = fakedRecordTTL
+			case *dns.AAAA:
+				rec.AAAA = fakeIP
+				rec.Hdr.Ttl = fakedRecordTTL
+			}
 		}
-		out.Answer = append(out.Answer, newRR)
 	}
 
-	if err := w.WriteMsg(out); err != nil {
+	if err := w.WriteMsg(resp); err != nil {
 		log.Printf("%s Error writing response: %v", h.logPrefix, err)
 	}
 }

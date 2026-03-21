@@ -61,7 +61,7 @@ else
 fi
 
 # 3.5 Copy Configuration File (The "OpenWrt Way")
-CONFIG_SRC="deployments/fakedns.uciconf"
+CONFIG_SRC="deployments/fakedns/fakedns.uciconf"
 if [ -f "$CONFIG_SRC" ]; then
     cp "$CONFIG_SRC" "$BUILD_DIR/etc/config/$PACKAGE_NAME"
     echo "/etc/config/$PACKAGE_NAME" > "$BUILD_DIR/CONTROL/conffiles"

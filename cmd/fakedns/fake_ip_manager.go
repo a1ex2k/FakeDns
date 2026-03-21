@@ -58,7 +58,7 @@ func NewFakeIPManager(
 	}, nil
 }
 
-func (m *FakeIPManager) GetFakeIP(domain string, realIP net.IP, ipVersion int) net.IP {
+func (m *FakeIPManager) GetFakeIP(realIP net.IP, ipVersion int) net.IP {
 	if realIP == nil {
 		return nil
 	}

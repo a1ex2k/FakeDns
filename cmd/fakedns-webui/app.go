@@ -4,11 +4,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 var ErrAuthNotInitialized = errors.New("auth not initialized")
+
+const maxJSONBodyBytes = 1 << 20
 
 type App struct {
 	cfg          Config
@@ -72,7 +76,17 @@ func (a *App) Run() error {
 		apiHandler = basicAuth(a.authUser, a.passwordHash, apiHandler)
 	}
 	mux.Handle("/api/", apiHandler)
-	return http.ListenAndServe(a.cfg.ListenAddr, mux)
+
+	server := &http.Server{
+		Addr:              a.cfg.ListenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+	return server.ListenAndServe()
 }
 
 // =========================
@@ -180,6 +194,11 @@ func (a *App) handleDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) handleListDomains(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		a.reply(w, http.StatusMethodNotAllowed, "Method not allowed, must be GET")
+		return
+	}
+
 	domains, err := a.store.List()
 	if err != nil {
 		a.reply(w, http.StatusInternalServerError, "Failed to read domains: "+err.Error())
@@ -204,11 +223,14 @@ func readJSON[T any](r *http.Request, dst *T) error {
 		return fmt.Errorf("Content-type must be application/json")
 	}
 
-	dec := json.NewDecoder(r.Body)
+	dec := json.NewDecoder(io.LimitReader(r.Body, maxJSONBodyBytes))
 	dec.DisallowUnknownFields()
 
 	if err := dec.Decode(dst); err != nil {
 		return err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return fmt.Errorf("request body must contain only one JSON object")
 	}
 	return nil
 }

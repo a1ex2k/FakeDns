@@ -5,6 +5,7 @@ import (
 	"log"
 	"net"
 	"os/exec"
+	"strings"
 )
 
 func RunNftCommand(args ...string) error {
@@ -17,24 +18,69 @@ func RunNftCommand(args ...string) error {
 	return nil
 }
 
+func isNftAlreadyExists(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "File exists")
+}
+
+func isNftMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "No such file or directory") || strings.Contains(msg, "does not exist")
+}
+
+func runNftAllowExists(args ...string) error {
+	err := RunNftCommand(args...)
+	if isNftAlreadyExists(err) {
+		return nil
+	}
+	return err
+}
+
 func SetupNftables(ipv4Subnet, ipv6Subnet string, fwmarkMask uint) error {
 	log.Println("Attempting nftables setup...")
-	_ = RunNftCommand("add", "table", nftTableName)
+	if err := runNftAllowExists("add", "table", nftFamily, nftTableName); err != nil {
+		return fmt.Errorf("failed to add table: %w", err)
+	}
 
 	if fwmarkMask > 0 {
-		mangleSpec := fmt.Sprintf("type filter hook prerouting priority %s", nftMarkingHookPrio)
-		err := RunNftCommand("add chain", nftTableName, nftMarkingChainName, "{", mangleSpec, ";}")
+		err := runNftAllowExists(
+			"add", "chain", nftFamily, nftTableName, nftMarkingChainName,
+			"{", "type", "filter", "hook", "prerouting", "priority", nftMarkingHookPrio, ";", "}",
+		)
 		if err != nil {
 			return fmt.Errorf("failed to add mangle chain: %w", err)
 		}
 		fwmarkString := fmt.Sprintf("0x%x", fwmarkMask)
-		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "meta mark set ct mark &", fwmarkString)
-		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip daddr", ipv4Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)
-		RunNftCommand("add rule", nftTableName, nftMarkingChainName, "ct state new ip6 daddr", ipv6Subnet, "meta mark set meta mark |", fwmarkString, "ct mark set ct mark |", fwmarkString)
+		if err := runNftAllowExists(
+			"add", "rule", nftFamily, nftTableName, nftMarkingChainName,
+			"meta", "mark", "set", "ct", "mark", "&", fwmarkString,
+		); err != nil {
+			return fmt.Errorf("failed to add ct->meta mark sync rule: %w", err)
+		}
+		if err := runNftAllowExists(
+			"add", "rule", nftFamily, nftTableName, nftMarkingChainName,
+			"ct", "state", "new", "ip", "daddr", ipv4Subnet,
+			"meta", "mark", "set", "meta", "mark", "|", fwmarkString,
+			"ct", "mark", "set", "ct", "mark", "|", fwmarkString,
+		); err != nil {
+			return fmt.Errorf("failed to add IPv4 fwmark rule: %w", err)
+		}
+		if err := runNftAllowExists(
+			"add", "rule", nftFamily, nftTableName, nftMarkingChainName,
+			"ct", "state", "new", "ip6", "daddr", ipv6Subnet,
+			"meta", "mark", "set", "meta", "mark", "|", fwmarkString,
+			"ct", "mark", "set", "ct", "mark", "|", fwmarkString,
+		); err != nil {
+			return fmt.Errorf("failed to add IPv6 fwmark rule: %w", err)
+		}
 	}
 
-	natSpec := fmt.Sprintf("type nat hook prerouting priority %s", nftHookPrio)
-	err := RunNftCommand("add chain", nftTableName, nftChainName, "{", natSpec, ";}")
+	err := runNftAllowExists(
+		"add", "chain", nftFamily, nftTableName, nftChainName,
+		"{", "type", "nat", "hook", "prerouting", "priority", nftHookPrio, ";", "}",
+	)
 	if err != nil {
 		return fmt.Errorf("failed to add nat chain: %w", err)
 	}
@@ -45,7 +91,7 @@ func SetupNftables(ipv4Subnet, ipv6Subnet string, fwmarkMask uint) error {
 
 func AddDnat4Rule(realIP, fakeIP net.IP) error {
 	ruleArgs := []string{
-		"add", "rule", nftTableName, nftChainName,
+		"add", "rule", nftFamily, nftTableName, nftChainName,
 		"ip", "daddr", fakeIP.String(),
 		"dnat", "to", realIP.String(),
 	}
@@ -54,7 +100,7 @@ func AddDnat4Rule(realIP, fakeIP net.IP) error {
 
 func AddDnat6Rule(realIP, fakeIP net.IP) error {
 	ruleArgs := []string{
-		"add", "rule", nftTableName, nftChainName,
+		"add", "rule", nftFamily, nftTableName, nftChainName,
 		"ip6", "daddr", fakeIP.String(),
 		"dnat", "to", realIP.String(),
 	}
@@ -63,5 +109,9 @@ func AddDnat6Rule(realIP, fakeIP net.IP) error {
 
 func CleanupNftables() error {
 	log.Println("Attempting nftables cleanup...")
-	return RunNftCommand("delete", "table", nftTableName)
+	err := RunNftCommand("delete", "table", nftFamily, nftTableName)
+	if isNftMissing(err) {
+		return nil
+	}
+	return err
 }
