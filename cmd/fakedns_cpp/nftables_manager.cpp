@@ -6,7 +6,9 @@
 #include <unistd.h>
 
 #include <cerrno>
+#include <fcntl.h>
 #include <sstream>
+#include <string>
 #include <vector>
 
 #include "ip_address.h"
@@ -41,6 +43,21 @@ std::string JoinNftCommand(const std::vector<std::string>& command) {
   return ss.str();
 }
 
+std::string ResolveNftBinary() {
+  static const char* kCandidates[] = {
+      "/usr/sbin/nft",
+      "/sbin/nft",
+      "/usr/bin/nft",
+      "/bin/nft",
+  };
+  for (const char* candidate : kCandidates) {
+    if (access(candidate, X_OK) == 0) {
+      return std::string(candidate);
+    }
+  }
+  return "nft";
+}
+
 }  // namespace
 
 bool NftablesManager::Setup() {
@@ -63,8 +80,10 @@ bool NftablesManager::Setup() {
            "daddr", "map", kNftMark6MapRef, "ct", "mark", "set", "ip6", "daddr", "map", kNftMark6MapRef},
           {"add", "chain", kNftFamily, kNftTable, kNftNatChain, "{", "type", "nat", "hook", "prerouting", "priority",
            kNftNatPrio, ";", "policy", "accept", ";", "}"},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "to", "ip", "daddr", "map", kNftDnat4MapRef},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "to", "ip6", "daddr", "map", kNftDnat6MapRef},
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip", "daddr", "dnat", "to", "ip", "daddr", "map",
+           kNftDnat4MapRef},
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip6", "daddr", "dnat", "to", "ip6", "daddr", "map",
+           kNftDnat6MapRef},
       },
       true);
 }
@@ -125,10 +144,22 @@ bool NftablesManager::RunBatchCommands(const std::vector<std::vector<std::string
     return false;
   }
 
+  int err_pipe[2] = {-1, -1};
+  if (pipe(err_pipe) != 0) {
+    close(socket_fds[0]);
+    close(socket_fds[1]);
+    if (log_on_error) {
+      Logger::Error("pipe() failed while preparing nft stderr capture.");
+    }
+    return false;
+  }
+
   pid_t pid = fork();
   if (pid < 0) {
     close(socket_fds[0]);
     close(socket_fds[1]);
+    close(err_pipe[0]);
+    close(err_pipe[1]);
     if (log_on_error) {
       Logger::Error("fork() failed while running nft batch command.");
     }
@@ -136,17 +167,27 @@ bool NftablesManager::RunBatchCommands(const std::vector<std::vector<std::string
   }
 
   if (pid == 0) {
+    const std::string nft_bin = ResolveNftBinary();
     close(socket_fds[0]);
+    close(err_pipe[0]);
     if (dup2(socket_fds[1], STDIN_FILENO) < 0) {
       _exit(127);
     }
+    if (dup2(err_pipe[1], STDERR_FILENO) < 0) {
+      _exit(127);
+    }
     close(socket_fds[1]);
-    char* argv[] = {const_cast<char*>("nft"), const_cast<char*>("-f"), const_cast<char*>("-"), nullptr};
+    close(err_pipe[1]);
+    char* argv[] = {const_cast<char*>(nft_bin.c_str()), const_cast<char*>("-f"), const_cast<char*>("-"), nullptr};
+    if (!nft_bin.empty() && nft_bin.front() == '/') {
+      execv(nft_bin.c_str(), argv);
+    }
     execvp("nft", argv);
     _exit(127);
   }
 
   close(socket_fds[1]);
+  close(err_pipe[1]);
 
   std::ostringstream script_stream;
   for (const auto& command : commands) {
@@ -169,6 +210,21 @@ bool NftablesManager::RunBatchCommands(const std::vector<std::vector<std::string
   }
   shutdown(socket_fds[0], SHUT_WR);
   close(socket_fds[0]);
+
+  std::string child_stderr;
+  char stderr_buffer[512];
+  while (true) {
+    const ssize_t n = read(err_pipe[0], stderr_buffer, sizeof(stderr_buffer));
+    if (n > 0) {
+      child_stderr.append(stderr_buffer, static_cast<std::size_t>(n));
+      continue;
+    }
+    if (n < 0 && errno == EINTR) {
+      continue;
+    }
+    break;
+  }
+  close(err_pipe[0]);
 
   int status = 0;
   while (waitpid(pid, &status, 0) < 0) {
@@ -198,6 +254,9 @@ bool NftablesManager::RunBatchCommands(const std::vector<std::vector<std::string
     if (!write_ok) {
       ss << "\n  [writer error while sending batch to nft]";
     }
+    if (!child_stderr.empty()) {
+      ss << "\n  [nft stderr]\n" << child_stderr;
+    }
     Logger::Error(ss.str());
   }
   return false;
@@ -213,14 +272,28 @@ bool NftablesManager::RunCommand(const std::vector<std::string>& args, bool log_
   }
 
   if (pid == 0) {
+    const std::string nft_bin = ResolveNftBinary();
+    int null_fd = -1;
+    if (!log_on_error) {
+      null_fd = open("/dev/null", O_WRONLY);
+      if (null_fd >= 0) {
+        dup2(null_fd, STDERR_FILENO);
+      }
+    }
     std::vector<char*> argv;
     argv.reserve(args.size() + 2);
-    argv.push_back(const_cast<char*>("nft"));
+    argv.push_back(const_cast<char*>(nft_bin.c_str()));
     for (const auto& arg : args) {
       argv.push_back(const_cast<char*>(arg.c_str()));
     }
     argv.push_back(nullptr);
+    if (!nft_bin.empty() && nft_bin.front() == '/') {
+      execv(nft_bin.c_str(), argv.data());
+    }
     execvp("nft", argv.data());
+    if (null_fd >= 0) {
+      close(null_fd);
+    }
     _exit(127);
   }
 
