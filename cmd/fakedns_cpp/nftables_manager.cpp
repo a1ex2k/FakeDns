@@ -71,6 +71,7 @@ bool NftablesManager::Setup() {
           {"add", "map", kNftFamily, kNftTable, kNftDnat6Map, "{", "type", "ipv6_addr", ":", "ipv6_addr", ";", "}"},
           {"add", "map", kNftFamily, kNftTable, kNftMark4Map, "{", "type", "ipv4_addr", ":", "mark", ";", "}"},
           {"add", "map", kNftFamily, kNftTable, kNftMark6Map, "{", "type", "ipv6_addr", ":", "mark", ";", "}"},
+          
           {"add", "chain", kNftFamily, kNftTable, kNftMarkChain, "{", "type", "filter", "hook", "prerouting",
            "priority", kNftMarkPrio, ";", "policy", "accept", ";", "}"},
           {"add", "rule", kNftFamily, kNftTable, kNftMarkChain, "meta", "mark", "set", "ct", "mark"},
@@ -78,11 +79,12 @@ bool NftablesManager::Setup() {
            "daddr", "map", kNftMark4MapRef, "ct", "mark", "set", "ip", "daddr", "map", kNftMark4MapRef},
           {"add", "rule", kNftFamily, kNftTable, kNftMarkChain, "ct", "state", "new", "meta", "mark", "set", "ip6",
            "daddr", "map", kNftMark6MapRef, "ct", "mark", "set", "ip6", "daddr", "map", kNftMark6MapRef},
+           
           {"add", "chain", kNftFamily, kNftTable, kNftNatChain, "{", "type", "nat", "hook", "prerouting", "priority",
            kNftNatPrio, ";", "policy", "accept", ";", "}"},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip", "daddr", "dnat", "to", "ip", "daddr", "map",
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "to", "ip", "daddr", "map",
            kNftDnat4MapRef},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip6", "daddr", "dnat", "to", "ip6", "daddr", "map",
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "to", "ip6", "daddr", "map",
            kNftDnat6MapRef},
       },
       true);
