@@ -18,6 +18,7 @@ class NftablesManager final {
 
  private:
   static std::string ToMarkHex(uint32_t fwmark);
+  static bool RunBatchCommands(const std::vector<std::vector<std::string>>& commands, bool log_on_error);
   static bool RunCommand(const std::vector<std::string>& args, bool log_on_error);
 
   std::mutex mutex_;
