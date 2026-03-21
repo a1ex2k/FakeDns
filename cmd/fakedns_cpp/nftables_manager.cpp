@@ -82,10 +82,10 @@ bool NftablesManager::Setup() {
            
           {"add", "chain", kNftFamily, kNftTable, kNftNatChain, "{", "type", "nat", "hook", "prerouting", "priority",
            kNftNatPrio, ";", "policy", "accept", ";", "}"},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip", "daddr", "dnat", "ip", "to", "ip", "daddr",
-           "map", kNftDnat4MapRef},
-          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "ip6", "daddr", "dnat", "ip6", "to", "ip6", "daddr",
-           "map", kNftDnat6MapRef},
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "ip", "to", "ip", "daddr", "map",
+           kNftDnat4MapRef},
+          {"add", "rule", kNftFamily, kNftTable, kNftNatChain, "dnat", "ip6", "to", "ip6", "daddr", "map",
+           kNftDnat6MapRef},
       },
       true);
 }
