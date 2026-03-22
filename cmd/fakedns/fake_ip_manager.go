@@ -13,8 +13,8 @@ const (
 )
 
 type FakeIPManager struct {
-	ipv4Map             map[IPv4Addr]net.IP
-	ipv6Map             map[IPv6Addr]net.IP
+	ipv4Map             map[IPv4Addr]IPv4Addr
+	ipv6Map             map[IPv6Addr]IPv6Addr
 	rwMutex4            sync.RWMutex
 	rwMutex6            sync.RWMutex
 	addNftRule4Callback func(realIP net.IP, fakeIP net.IP) error
@@ -46,18 +46,12 @@ func NewFakeIPManager(
 		return nil, err
 	}
 
-	v4Cap := int(v4max)
-	if v4Cap < 0 {
-		v4Cap = 0
-	}
-	v6Cap := int(v6max)
-	if v6Cap < 0 {
-		v6Cap = 0
-	}
+	v4Cap := initialMapCapacity(v4max)
+	v6Cap := initialMapCapacity(v6max)
 
 	return &FakeIPManager{
-		ipv4Map:             make(map[IPv4Addr]net.IP, v4Cap),
-		ipv6Map:             make(map[IPv6Addr]net.IP, v6Cap),
+		ipv4Map:             make(map[IPv4Addr]IPv4Addr, v4Cap),
+		ipv6Map:             make(map[IPv6Addr]IPv6Addr, v6Cap),
 		addNftRule4Callback: nftCallback4,
 		addNftRule6Callback: nftCallback6,
 		ipv4SubnetBase:      v4base,
@@ -88,29 +82,30 @@ func (m *FakeIPManager) GetFakeIPv4(realIP net.IP) net.IP {
 	fakeIP, ok := m.ipv4Map[ip]
 	m.rwMutex4.RUnlock()
 	if ok {
-		return fakeIP
+		return IPv4FromUint32(uint32(fakeIP))
 	}
 
 	m.rwMutex4.Lock()
 	defer m.rwMutex4.Unlock()
 
 	if fakeIP, ok := m.ipv4Map[ip]; ok {
-		return fakeIP
+		return IPv4FromUint32(uint32(fakeIP))
 	}
 
 	index := m.nextIPv4Counter.Add(1)
 	if index > m.ipv4MaxCount {
 		return nil
 	}
-	fakeIP = IPv4FromUint32(m.ipv4SubnetBase + index)
+	fakeIP = IPv4Addr(m.ipv4SubnetBase + index)
+	fakeIPNet := IPv4FromUint32(uint32(fakeIP))
 
-	if err := m.addNftRule4Callback(realIP, fakeIP); err != nil {
+	if err := m.addNftRule4Callback(realIP, fakeIPNet); err != nil {
 		m.nextIPv4Counter.Add(^uint32(0)) // decrement counter on failure
 		return nil
 	}
 
 	m.ipv4Map[ip] = fakeIP
-	return fakeIP
+	return fakeIPNet
 }
 
 func (m *FakeIPManager) GetFakeIPv6(realIP net.IP) net.IP {
@@ -120,29 +115,41 @@ func (m *FakeIPManager) GetFakeIPv6(realIP net.IP) net.IP {
 	fakeIP, ok := m.ipv6Map[ip]
 	m.rwMutex6.RUnlock()
 	if ok {
-		return fakeIP
+		return IPv6FromUint64(fakeIP.hi, fakeIP.lo)
 	}
 
 	m.rwMutex6.Lock()
 	defer m.rwMutex6.Unlock()
 
 	if fakeIP, ok := m.ipv6Map[ip]; ok {
-		return fakeIP
+		return IPv6FromUint64(fakeIP.hi, fakeIP.lo)
 	}
 
 	index := m.nextIPv6Counter.Add(1)
 	if index > m.ipv6MaxCount {
 		return nil
 	}
-	fakeIP = IPv6FromUint64(m.ipv6SubnetHigh, uint64(index))
+	fakeIP = IPv6Addr{hi: m.ipv6SubnetHigh, lo: uint64(index)}
+	fakeIPNet := IPv6FromUint64(fakeIP.hi, fakeIP.lo)
 
-	if err := m.addNftRule6Callback(realIP, fakeIP); err != nil {
+	if err := m.addNftRule6Callback(realIP, fakeIPNet); err != nil {
 		m.nextIPv6Counter.Add(^uint32(0))
 		return nil
 	}
 
 	m.ipv6Map[ip] = fakeIP
-	return fakeIP
+	return fakeIPNet
+}
+
+func initialMapCapacity(max uint32) int {
+	if max == 0 {
+		return 0
+	}
+	const defaultCap = 128
+	if max < defaultCap {
+		return int(max)
+	}
+	return defaultCap
 }
 
 func IPv6FromUint64(hi, lo uint64) net.IP {
