@@ -129,9 +129,9 @@ jobs:
 
           mkdir -p "$SDK_DIR/package/fakedns-lite/files"
           cp "bin/mipsel_24kc/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
-          cp openwrt/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
-          cp openwrt/fakedns-lite/files/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
-          cp openwrt/fakedns-lite/files/fakedns-lite.config "$SDK_DIR/package/fakedns-lite/files/"
+          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
+          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
           make package/fakedns-lite/compile V=s
@@ -171,9 +171,9 @@ jobs:
 
           mkdir -p "$SDK_DIR/package/fakedns-lite/files"
           cp bin/filogic/fakedns-lite "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
-          cp openwrt/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
-          cp openwrt/fakedns-lite/files/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
-          cp openwrt/fakedns-lite/files/fakedns-lite.config "$SDK_DIR/package/fakedns-lite/files/"
+          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
+          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
           make package/fakedns-lite/compile V=s
