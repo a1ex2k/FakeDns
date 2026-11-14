@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: [amd64, arm64, mipsel_24kc, filogic]
+        arch: [amd64, arm64, mipsel_24kc, openwrt_arm64, filogic]
 
     steps:
       - name: Checkout code
@@ -58,6 +58,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
           OPENWRT_SDK_URL: ${{ vars.OPENWRT_SDK_URL }}
+          OPENWRT_ARM64_SDK_URL: ${{ vars.OPENWRT_ARM64_SDK_URL }}
           OPENWRT_FILOGIC_SDK_URL: ${{ vars.OPENWRT_FILOGIC_SDK_URL }}
         run: |
           set -euxo pipefail
@@ -80,52 +81,59 @@ jobs:
               echo "::warning::Using default mt7621 SDK URL: $OPENWRT_SDK_URL"
             fi
 
-            mkdir -p /tmp/openwrt-sdk
+            SDK_DIR="/tmp/openwrt-sdk"
+            mkdir -p "$SDK_DIR"
             wget -qO /tmp/openwrt-sdk.tar.xz "$OPENWRT_SDK_URL"
-            tar -xf /tmp/openwrt-sdk.tar.xz -C /tmp/openwrt-sdk --strip-components=1
+            tar -xf /tmp/openwrt-sdk.tar.xz -C "$SDK_DIR" --strip-components=1
 
-            TOOLCHAIN_BIN="$(find /tmp/openwrt-sdk/staging_dir -type d -path "*/toolchain-*/bin" | head -n1)"
+            TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
             if [ -z "$TOOLCHAIN_BIN" ]; then
               echo "::error::OpenWrt SDK toolchain bin directory not found."
               exit 1
             fi
 
             export PATH="$TOOLCHAIN_BIN:$PATH"
-            export STAGING_DIR="/tmp/openwrt-sdk/staging_dir"
+            export STAGING_DIR="$SDK_DIR/staging_dir"
             export CXX=mipsel-openwrt-linux-musl-g++
             export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
           fi
 
-          if [ "$ARCH" == "filogic" ]; then
-            DEFAULT_FILOGIC_SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
-            if [ -z "${OPENWRT_FILOGIC_SDK_URL:-}" ]; then
-              OPENWRT_FILOGIC_SDK_URL="$DEFAULT_FILOGIC_SDK_URL"
-              echo "::warning::OPENWRT_FILOGIC_SDK_URL repository variable is not set."
-              echo "::warning::Using default OpenWrt 25.12 Filogic SDK: $OPENWRT_FILOGIC_SDK_URL"
-            fi
+          if [ "$ARCH" == "openwrt_arm64" ] || [ "$ARCH" == "filogic" ]; then
+            case "$ARCH" in
+              openwrt_arm64)
+                DEFAULT_SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/armsr/armv8/openwrt-sdk-25.12.6-armsr-armv8_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+                SDK_URL="${OPENWRT_ARM64_SDK_URL:-$DEFAULT_SDK_URL}"
+                TARGET_FLAGS=""
+                ;;
+              filogic)
+                DEFAULT_SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+                SDK_URL="${OPENWRT_FILOGIC_SDK_URL:-$DEFAULT_SDK_URL}"
+                TARGET_FLAGS="-mcpu=cortex-a53"
+                ;;
+            esac
 
-            SDK_DIR="/tmp/openwrt-filogic-sdk"
+            SDK_DIR="/tmp/openwrt-sdk-$ARCH"
             mkdir -p "$SDK_DIR"
-            wget -qO /tmp/openwrt-filogic-sdk.tar.zst "$OPENWRT_FILOGIC_SDK_URL"
-            tar --zstd -xf /tmp/openwrt-filogic-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
+            wget -qO /tmp/openwrt-sdk.tar.zst "$SDK_URL"
+            tar --zstd -xf /tmp/openwrt-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
 
             TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
             if [ -z "$TOOLCHAIN_BIN" ]; then
-              echo "::error::OpenWrt 25.12 Filogic SDK toolchain bin directory not found."
+              echo "::error::OpenWrt 25.12 SDK toolchain bin directory not found."
               exit 1
             fi
 
             CXX_BIN="$(find "$TOOLCHAIN_BIN" -maxdepth 1 -name '*-g++' | head -n1)"
             APK_TOOL="$SDK_DIR/staging_dir/host/bin/apk"
             if [ -z "$CXX_BIN" ] || [ ! -x "$APK_TOOL" ]; then
-              echo "::error::Filogic cross-compiler or OpenWrt APK v3 tool not found in SDK."
+              echo "::error::OpenWrt 25.12 cross-compiler or APK v3 tool not found in SDK."
               exit 1
             fi
 
             export PATH="$TOOLCHAIN_BIN:$PATH"
             export STAGING_DIR="$SDK_DIR/staging_dir"
             export CXX="$CXX_BIN"
-            export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread -mcpu=cortex-a53"
+            export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread $TARGET_FLAGS"
           fi
 
           command -v "${CXX:-g++}"
@@ -133,7 +141,7 @@ jobs:
 
           ./deployments/build.sh "$ARCH" fakedns-lite
 
-          if [ "$ARCH" == "filogic" ]; then
+          if [ "$ARCH" == "filogic" ] || [ "$ARCH" == "openwrt_arm64" ]; then
             ./deployments/package_core_apk.sh "$ARCH" "$VERSION" "$APK_TOOL"
           elif [ "$ARCH" == "arm64" ] || [ "$ARCH" == "mipsel_24kc" ]; then
             ./deployments/package_core_ipk.sh "$ARCH" "$VERSION"
