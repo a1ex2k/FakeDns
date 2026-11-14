@@ -54,7 +54,6 @@ jobs:
             zstd
 
       - name: Build and Package
-        if: matrix.arch != 'filogic'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
@@ -100,7 +99,7 @@ jobs:
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: packages-${{ matrix.arch }}${{ (matrix.arch == 'mipsel_24kc' || matrix.arch == 'filogic') && '-openwrt-25.12.6' || '' }}
+          name: packages-${{ matrix.arch }}${{ matrix.arch == 'mipsel_24kc' && '-openwrt-22.03.5' || '' }}
           path: dist/*
 
 
@@ -184,7 +183,7 @@ jobs:
 
 
   create_release:
-    needs: [prepare, build_and_package]
+    needs: [prepare, build_and_package, build_openwrt_25_12]
     if: needs.prepare.outputs.is_tag == 'true'
     runs-on: ubuntu-22.04
     steps:
