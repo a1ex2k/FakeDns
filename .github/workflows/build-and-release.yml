@@ -139,7 +139,7 @@ jobs:
           find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
           test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
 
-      - name: Build OpenWrt 25.12 APK (Filogic: MT7981/MT7986)
+      - name: "Build OpenWrt 25.12 APK (Filogic: MT7981/MT7986)"
         if: matrix.arch == 'filogic'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
