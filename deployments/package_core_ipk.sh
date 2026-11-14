@@ -122,9 +122,9 @@ tar --numeric-owner --owner=0 --group=0 -czf "$STAGING_DIR/control.tar.gz" .
 # Create the final .ipk
 cd "$STAGING_DIR"
 echo "2.0" > debian-binary
-tar -czf "$DIST_DIR/${PACKAGE_NAME}_${VERSION}_${PKG_ARCH}.ipk" debian-binary control.tar.gz data.tar.gz
+tar -czf "$DIST_DIR/${PACKAGE_NAME}_${VERSION}_openwrt-22.03.5_${PKG_ARCH}.ipk" debian-binary control.tar.gz data.tar.gz
 
 # 8. Cleanup
 cd "$CUR_DIR"
 rm -rf "$BUILD_DIR" "$STAGING_DIR"
-echo "✅ IPK complete: dist/${PACKAGE_NAME}_${VERSION}_${PKG_ARCH}.ipk"
+echo "✅ IPK complete: dist/${PACKAGE_NAME}_${VERSION}_openwrt-22.03.5_${PKG_ARCH}.ipk"
