@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - cpp_experimental
   workflow_dispatch:
 
 permissions:
