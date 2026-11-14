@@ -10,7 +10,8 @@ define Package/fakedns-lite
   SECTION:=net
   CATEGORY:=Network
   TITLE:=FakeDNS Core Server
-  DEPENDS:=+libstdcpp +nftables-json +kmod-nft-nat
+  DEPENDS:=+libstdcpp +kmod-nft-nat
+  EXTRA_DEPENDS:=nftables-json
 endef
 
 define Package/fakedns-lite/description
@@ -22,22 +23,22 @@ define Package/fakedns-lite/conffiles
 endef
 
 define Build/Prepare
- mkdir -p $(PKG_BUILD_DIR)
+	mkdir -p $(PKG_BUILD_DIR)
 endef
 
 define Build/Compile
- true
+	true
 endef
 
 define Package/fakedns-lite/install
- $(INSTALL_DIR) $(1)/usr/bin
- $(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite $(1)/usr/bin/fakedns-lite
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite $(1)/usr/bin/fakedns-lite
 
- $(INSTALL_DIR) $(1)/etc/init.d
- $(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.init $(1)/etc/init.d/fakedns-lite
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.init $(1)/etc/init.d/fakedns-lite
 
- $(INSTALL_DIR) $(1)/etc/config
- $(INSTALL_CONF) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.config $(1)/etc/config/fakedns-lite
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.config $(1)/etc/config/fakedns-lite
 endef
 
 define Package/fakedns-lite/postinst
