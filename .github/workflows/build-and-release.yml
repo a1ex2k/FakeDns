@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: [amd64, arm64, mipsel_24kc, filogic]
+        arch: [amd64, arm64, mipsel_24kc]
 
     steps:
       - name: Checkout code
@@ -97,95 +97,91 @@ jobs:
             ./deployments/package_full_deb.sh "$ARCH" "$VERSION"
           fi
 
-      - name: Build OpenWrt 25.12 APK (MT7621)
-        if: matrix.arch == 'mipsel_24kc'
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euxo pipefail
-
-          SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/ramips/mt7621/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
-          mkdir -p /tmp/openwrt-sdk-25.12
-          wget -qO /tmp/openwrt-sdk-25.12.tar.zst "$SDK_URL"
-          echo "e4e3f25962ddf3ed55207fed456ecd1d6e55f3482c976b3183a640df6ef0adf0  /tmp/openwrt-sdk-25.12.tar.zst" | sha256sum -c -
-          tar --zstd -xf /tmp/openwrt-sdk-25.12.tar.zst -C /tmp/openwrt-sdk-25.12 --strip-components=1
-
-          SDK_DIR=/tmp/openwrt-sdk-25.12
-          HOST_PATH="$PATH"
-          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
-          test -n "$TOOLCHAIN_BIN"
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-          export STAGING_DIR="$SDK_DIR/staging_dir"
-          export CXX=mipsel-openwrt-linux-musl-g++
-          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
-
-          # Build against the 25.12 toolchain, not the older 22.03 toolchain.
-          ./deployments/build.sh mipsel_24kc fakedns-lite
-
-          # The binary is already cross-compiled. Run the SDK package build with
-          # the native host compiler and tools, not the target compiler from PATH.
-          export PATH="$HOST_PATH"
-          unset CXX CXXFLAGS
-
-          mkdir -p "$SDK_DIR/package/fakedns-lite/files"
-          cp "bin/mipsel_24kc/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
-          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
-          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
-          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
-
-          cd "$SDK_DIR"
-          make package/fakedns-lite/compile V=s
-
-          find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
-          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
-
-      - name: "Build OpenWrt 25.12 APK (Filogic: MT7981/MT7986)"
-        if: matrix.arch == 'filogic'
-        env:
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euxo pipefail
-          mkdir -p dist
-          chmod +x deployments/*.sh
-
-          SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
-          SDK_SHA256="1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"
-          SDK_DIR=/tmp/openwrt-sdk-filogic-25.12
-          mkdir -p "$SDK_DIR"
-          wget -qO /tmp/openwrt-sdk-filogic-25.12.tar.zst "$SDK_URL"
-          echo "$SDK_SHA256  /tmp/openwrt-sdk-filogic-25.12.tar.zst" | sha256sum -c -
-          tar --zstd -xf /tmp/openwrt-sdk-filogic-25.12.tar.zst -C "$SDK_DIR" --strip-components=1
-
-          HOST_PATH="$PATH"
-          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
-          test -n "$TOOLCHAIN_BIN"
-          export PATH="$TOOLCHAIN_BIN:$PATH"
-          export STAGING_DIR="$SDK_DIR/staging_dir"
-          export CXX=aarch64-openwrt-linux-musl-g++
-          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
-
-          ./deployments/build.sh filogic fakedns-lite
-
-          export PATH="$HOST_PATH"
-          unset CXX CXXFLAGS
-
-          mkdir -p "$SDK_DIR/package/fakedns-lite/files"
-          cp bin/filogic/fakedns-lite "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
-          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
-          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
-          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
-
-          cd "$SDK_DIR"
-          make package/fakedns-lite/compile V=s
-
-          find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
-          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
-
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.arch }}${{ (matrix.arch == 'mipsel_24kc' || matrix.arch == 'filogic') && '-openwrt-25.12.6' || '' }}
           path: dist/*
+
+
+  build_openwrt_25_12:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [mt7621, filogic]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install Packaging Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget zstd
+
+      - name: Build OpenWrt 25.12 APK
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euxo pipefail
+          mkdir -p dist
+          chmod +x deployments/*.sh
+
+          if [ "$TARGET" = "mt7621" ]; then
+            SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/ramips/mt7621/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+            SDK_SHA256="e4e3f25962ddf3ed55207fed456ecd1d6e55f3482c976b3183a640df6ef0adf0"
+            BUILD_ARCH=mipsel_24kc
+          else
+            SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+            SDK_SHA256="1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"
+            BUILD_ARCH=filogic
+          fi
+
+          SDK_DIR="/tmp/openwrt-sdk-$TARGET-25.12"
+          mkdir -p "$SDK_DIR"
+          wget -qO /tmp/openwrt-sdk.tar.zst "$SDK_URL"
+          echo "$SDK_SHA256  /tmp/openwrt-sdk.tar.zst" | sha256sum -c -
+          tar --zstd -xf /tmp/openwrt-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
+
+          HOST_PATH="$PATH"
+          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
+          test -n "$TOOLCHAIN_BIN"
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          export STAGING_DIR="$SDK_DIR/staging_dir"
+
+          if [ "$TARGET" = "mt7621" ]; then
+            export CXX=mipsel-openwrt-linux-musl-g++
+          else
+            export CXX=aarch64-openwrt-linux-musl-g++
+          fi
+          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
+
+          ./deployments/build.sh "$BUILD_ARCH" fakedns-lite
+
+          export PATH="$HOST_PATH"
+          unset CXX CXXFLAGS
+
+          mkdir -p "$SDK_DIR/package/fakedns-lite/files"
+          cp "bin/$BUILD_ARCH/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
+          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
+          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
+
+          cd "$SDK_DIR"
+          make package/fakedns-lite/compile V=s
+
+          find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
+
+      - name: Upload OpenWrt 25.12 Artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-openwrt-25.12.6-${{ matrix.target }}
+          path: dist/*
+
 
   create_release:
     needs: [prepare, build_and_package]
