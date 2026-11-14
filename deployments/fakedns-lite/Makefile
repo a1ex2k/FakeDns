@@ -30,14 +30,14 @@ define Build/Compile
 endef
 
 define Package/fakedns-lite/install
- $(INSTALL_DIR) $(1)/usr/bin
- $(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite $(1)/usr/bin/fakedns-lite
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite $(1)/usr/bin/fakedns-lite
 
- $(INSTALL_DIR) $(1)/etc/init.d
- $(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.init $(1)/etc/init.d/fakedns-lite
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.init $(1)/etc/init.d/fakedns-lite
 
- $(INSTALL_DIR) $(1)/etc/config
- $(INSTALL_CONF) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.config $(1)/etc/config/fakedns-lite
+	$(INSTALL_DIR) $(1)/etc/config
+	$(INSTALL_CONF) $(CURDIR)/package/fakedns-lite/files/fakedns-lite.config $(1)/etc/config/fakedns-lite
 endef
 
 define Package/fakedns-lite/postinst
