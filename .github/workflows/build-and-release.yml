@@ -110,6 +110,7 @@ jobs:
           tar --zstd -xf /tmp/openwrt-sdk-25.12.tar.zst -C /tmp/openwrt-sdk-25.12 --strip-components=1
 
           SDK_DIR=/tmp/openwrt-sdk-25.12
+          HOST_PATH="$PATH"
           TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
           test -n "$TOOLCHAIN_BIN"
           export PATH="$TOOLCHAIN_BIN:$PATH"
@@ -119,6 +120,11 @@ jobs:
 
           # Build against the 25.12 toolchain, not the older 22.03 toolchain.
           ./deployments/build.sh mipsel_24kc fakedns-lite
+
+          # The binary is already cross-compiled. Run the SDK package build with
+          # the native host compiler and tools, not the target compiler from PATH.
+          export PATH="$HOST_PATH"
+          unset CXX CXXFLAGS
 
           mkdir -p "$SDK_DIR/package/fakedns-lite/files"
           cp "bin/mipsel_24kc/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
