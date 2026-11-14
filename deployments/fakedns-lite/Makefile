@@ -22,11 +22,11 @@ define Package/fakedns-lite/conffiles
 endef
 
 define Build/Prepare
- mkdir -p $(PKG_BUILD_DIR)
+	mkdir -p $(PKG_BUILD_DIR)
 endef
 
 define Build/Compile
- true
+	true
 endef
 
 define Package/fakedns-lite/install
