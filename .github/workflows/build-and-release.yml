@@ -174,16 +174,21 @@ jobs:
           install -m 0644 deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
+          # SDK .config is intentionally absent; create a non-interactive default
+          # config so the package build does not fall back to menuconfig.
+          make defconfig
           make package/fakedns-lite/compile V=s
 
-          find bin/packages -type f -name 'fakedns-lite_*.apk' -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
-          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
+          APK_FILE="$(find bin/packages -type f -name 'fakedns-lite_*.apk' -print -quit)"
+          test -n "$APK_FILE"
+          install -m 0644 "$APK_FILE" "$GITHUB_WORKSPACE/dist/fakedns-lite-${VERSION}-${TARGET}.apk"
+          test -s "$GITHUB_WORKSPACE/dist/fakedns-lite-${VERSION}-${TARGET}.apk"
 
       - name: Upload OpenWrt 25.12 APK
         uses: actions/upload-artifact@v7
         with:
           name: packages-openwrt-25.12.6-${{ matrix.target }}
-          path: dist/*.apk
+          path: dist/fakedns-lite-*.apk
           if-no-files-found: error
 
   create_release:
