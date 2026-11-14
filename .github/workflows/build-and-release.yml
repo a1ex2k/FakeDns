@@ -16,92 +16,101 @@ jobs:
       version: ${{ steps.get_version.outputs.version }}
       is_tag: ${{ steps.get_version.outputs.is_tag }}
     steps:
-      - name: Get Version from Tag
+      - name: Get version
         id: get_version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VER=${GITHUB_REF_NAME#v}
-            IS_TAG="true"
+            IS_TAG=true
           else
             VER=$(date +'%Y.%m.%d')
-            IS_TAG="false"
+            IS_TAG=false
           fi
 
-          echo "version=$VER" >> $GITHUB_OUTPUT
-          echo "is_tag=$IS_TAG" >> $GITHUB_OUTPUT
-          echo "Version: $VER, Is tag: $IS_TAG"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+          echo "is_tag=$IS_TAG" >> "$GITHUB_OUTPUT"
 
-  build_and_package:
+  build_deb:
     needs: prepare
     runs-on: ubuntu-22.04
     strategy:
+      fail-fast: false
       matrix:
-        arch: [amd64, arm64, mipsel_24kc]
-
+        arch: [amd64, arm64]
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Packaging Tools
+      - name: Install build tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
-            binutils \
-            g++ \
-            g++-aarch64-linux-gnu \
-            wget \
-            xz-utils \
-            zstd
+          sudo apt-get install -y g++ g++-aarch64-linux-gnu binutils
 
-      - name: Build and Package
+      - name: Build Debian package
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
-          OPENWRT_SDK_URL: ${{ vars.OPENWRT_SDK_URL }}
         run: |
           set -euxo pipefail
           mkdir -p dist
           chmod +x deployments/*.sh
-
           unset CXX CXXFLAGS FAKEDNS_LDFLAGS
-          if [ "$ARCH" == "arm64" ]; then
+
+          if [ "$ARCH" = arm64 ]; then
             export CXX=aarch64-linux-gnu-g++
-          fi
-          if [ "$ARCH" == "mipsel_24kc" ]; then
-            DEFAULT_OPENWRT_SDK_URL="https://downloads.openwrt.org/releases/22.03.5/targets/ramips/mt7621/openwrt-sdk-22.03.5-ramips-mt7621_gcc-11.2.0_musl.Linux-x86_64.tar.xz"
-            if [ -z "${OPENWRT_SDK_URL:-}" ]; then
-              OPENWRT_SDK_URL="$DEFAULT_OPENWRT_SDK_URL"
-              echo "::warning::OPENWRT_SDK_URL is not set; using the default 22.03.5 SDK."
-            fi
-
-            mkdir -p /tmp/openwrt-sdk
-            wget -qO /tmp/openwrt-sdk.tar.xz "$OPENWRT_SDK_URL"
-            tar -xf /tmp/openwrt-sdk.tar.xz -C /tmp/openwrt-sdk --strip-components=1
-
-            TOOLCHAIN_BIN="$(find /tmp/openwrt-sdk/staging_dir -type d -path "*/toolchain-*/bin" | head -n1)"
-            test -n "$TOOLCHAIN_BIN"
-            export PATH="$TOOLCHAIN_BIN:$PATH"
-            export STAGING_DIR="/tmp/openwrt-sdk/staging_dir"
-            export CXX=mipsel-openwrt-linux-musl-g++
-            export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
           fi
 
           ./deployments/build.sh "$ARCH" fakedns-lite
+          ./deployments/package_full_deb.sh "$ARCH" "$VERSION"
 
-          if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "mipsel_24kc" ]; then
-            ./deployments/package_core_ipk.sh "$ARCH" "$VERSION"
-          fi
-
-          if [ "$ARCH" == "arm64" ] || [ "$ARCH" == "amd64" ]; then
-            ./deployments/package_full_deb.sh "$ARCH" "$VERSION"
-          fi
-
-      - name: Upload Artifacts
+      - name: Upload Debian package
         uses: actions/upload-artifact@v7
         with:
-          name: packages-${{ matrix.arch }}${{ matrix.arch == 'mipsel_24kc' && '-openwrt-22.03.5' || '' }}
-          path: dist/*
+          name: packages-deb-${{ matrix.arch }}
+          path: dist/*.deb
+          if-no-files-found: error
 
+  build_openwrt_22_03:
+    needs: prepare
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget xz-utils
+
+      - name: Build OpenWrt 22.03 IPK (MT7621)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euxo pipefail
+          mkdir -p dist /tmp/openwrt-sdk
+          chmod +x deployments/*.sh
+
+          SDK_URL="https://downloads.openwrt.org/releases/22.03.5/targets/ramips/mt7621/openwrt-sdk-22.03.5-ramips-mt7621_gcc-11.2.0_musl.Linux-x86_64.tar.xz"
+          wget -qO /tmp/openwrt-sdk.tar.xz "$SDK_URL"
+          tar -xf /tmp/openwrt-sdk.tar.xz -C /tmp/openwrt-sdk --strip-components=1
+
+          TOOLCHAIN_BIN="$(find /tmp/openwrt-sdk/staging_dir -type d -path '*/toolchain-*/bin' | head -n1)"
+          test -n "$TOOLCHAIN_BIN"
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          export STAGING_DIR=/tmp/openwrt-sdk/staging_dir
+          export CXX=mipsel-openwrt-linux-musl-g++
+          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
+
+          ./deployments/build.sh mipsel_24kc fakedns-lite
+          ./deployments/package_core_ipk.sh mipsel_24kc "$VERSION"
+          test -s "dist/fakedns-lite_${VERSION}_mipsel_24kc.ipk"
+
+      - name: Upload OpenWrt 22.03 IPK
+        uses: actions/upload-artifact@v7
+        with:
+          name: packages-openwrt-22.03.5-mt7621
+          path: dist/*.ipk
+          if-no-files-found: error
 
   build_openwrt_25_12:
     needs: prepare
@@ -110,12 +119,11 @@ jobs:
       fail-fast: false
       matrix:
         target: [mt7621, filogic]
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Install Packaging Tools
+      - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y wget zstd
@@ -129,61 +137,55 @@ jobs:
           mkdir -p dist
           chmod +x deployments/*.sh
 
-          if [ "$TARGET" = "mt7621" ]; then
+          if [ "$TARGET" = mt7621 ]; then
             SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/ramips/mt7621/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
             SDK_SHA256="e4e3f25962ddf3ed55207fed456ecd1d6e55f3482c976b3183a640df6ef0adf0"
             BUILD_ARCH=mipsel_24kc
+            CXX=mipsel-openwrt-linux-musl-g++
           else
             SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
             SDK_SHA256="1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"
             BUILD_ARCH=filogic
+            CXX=aarch64-openwrt-linux-musl-g++
           fi
 
-          SDK_DIR="/tmp/openwrt-sdk-$TARGET-25.12"
+          SDK_DIR="/tmp/openwrt-sdk-$TARGET"
           mkdir -p "$SDK_DIR"
           wget -qO /tmp/openwrt-sdk.tar.zst "$SDK_URL"
           echo "$SDK_SHA256  /tmp/openwrt-sdk.tar.zst" | sha256sum -c -
           tar --zstd -xf /tmp/openwrt-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
 
-          HOST_PATH="$PATH"
-          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
+          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path '*/toolchain-*/bin' | head -n1)"
           test -n "$TOOLCHAIN_BIN"
           export PATH="$TOOLCHAIN_BIN:$PATH"
           export STAGING_DIR="$SDK_DIR/staging_dir"
-
-          if [ "$TARGET" = "mt7621" ]; then
-            export CXX=mipsel-openwrt-linux-musl-g++
-          else
-            export CXX=aarch64-openwrt-linux-musl-g++
-          fi
+          export CXX
           export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
 
           ./deployments/build.sh "$BUILD_ARCH" fakedns-lite
 
-          export PATH="$HOST_PATH"
           unset CXX CXXFLAGS
-
-          mkdir -p "$SDK_DIR/package/fakedns-lite/files"
-          cp "bin/$BUILD_ARCH/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
-          cp deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
-          cp deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
-          cp deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
+          mkdir -p "$SDK_DIR/host" "$SDK_DIR/package/fakedns-lite/files"
+          install -m 0755 "bin/$BUILD_ARCH/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
+          install -m 0644 deployments/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          install -m 0755 deployments/fakedns-lite/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.init"
+          install -m 0644 deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
           make package/fakedns-lite/compile V=s
 
-          find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          find bin/packages -type f -name 'fakedns-lite_*.apk' -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
           test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
 
-      - name: Upload OpenWrt 25.12 Artifact
+      - name: Upload OpenWrt 25.12 APK
         uses: actions/upload-artifact@v7
         with:
           name: packages-openwrt-25.12.6-${{ matrix.target }}
-          path: dist/*
-
+          path: dist/*.apk
+          if-no-files-found: error
 
   create_release:
-    needs: [prepare, build_and_package, build_openwrt_25_12]
+    needs: [prepare, build_deb, build_openwrt_22_03, build_openwrt_25_12]
     if: needs.prepare.outputs.is_tag == 'true'
     runs-on: ubuntu-22.04
     steps:
