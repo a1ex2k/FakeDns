@@ -155,6 +155,7 @@ jobs:
           echo "$SDK_SHA256  /tmp/openwrt-sdk.tar.zst" | sha256sum -c -
           tar --zstd -xf /tmp/openwrt-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
 
+          HOST_PATH="$PATH"
           TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path '*/toolchain-*/bin' | head -n1)"
           test -n "$TOOLCHAIN_BIN"
           export PATH="$TOOLCHAIN_BIN:$PATH"
@@ -164,6 +165,7 @@ jobs:
 
           ./deployments/build.sh "$BUILD_ARCH" fakedns-lite
 
+          export PATH="$HOST_PATH"
           unset CXX CXXFLAGS
           mkdir -p "$SDK_DIR/host" "$SDK_DIR/package/fakedns-lite/files"
           install -m 0755 "bin/$BUILD_ARCH/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
