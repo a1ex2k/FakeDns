@@ -102,7 +102,7 @@ chmod 0755 "$SCRIPTS_DIR/post-install" "$SCRIPTS_DIR/post-upgrade" "$SCRIPTS_DIR
     --script "post-upgrade:$SCRIPTS_DIR/post-upgrade" \
     --script "pre-deinstall:$SCRIPTS_DIR/pre-deinstall" \
     --files "$BUILD_DIR" \
-    --output "$DIST_DIR/${PACKAGE_NAME}-${VERSION}-r1_${PKG_ARCH}.apk"
+    --output "$DIST_DIR/${PACKAGE_NAME}-${VERSION}-r1_openwrt-25.12.6_${PKG_ARCH}.apk"
 
 rm -rf "$BUILD_DIR" "$SCRIPTS_DIR"
-echo "APK v3 complete: $DIST_DIR/${PACKAGE_NAME}-${VERSION}-r1_${PKG_ARCH}.apk"
+echo "APK v3 complete: $DIST_DIR/${PACKAGE_NAME}-${VERSION}-r1_openwrt-25.12.6_${PKG_ARCH}.apk"
