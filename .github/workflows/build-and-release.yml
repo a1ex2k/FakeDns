@@ -50,7 +50,8 @@ jobs:
             g++ \
             g++-aarch64-linux-gnu \
             wget \
-            xz-utils
+            xz-utils \
+            zstd
 
       - name: Build and Package
         env:
@@ -101,8 +102,6 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euxo pipefail
-          sudo apt-get update
-          sudo apt-get install -y zstd
 
           SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/ramips/mt7621/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
           mkdir -p /tmp/openwrt-sdk-25.12
@@ -110,16 +109,27 @@ jobs:
           tar --zstd -xf /tmp/openwrt-sdk-25.12.tar.zst -C /tmp/openwrt-sdk-25.12 --strip-components=1
 
           SDK_DIR=/tmp/openwrt-sdk-25.12
-          mkdir -p "$SDK_DIR/package/fakedns-lite/src"
-          cp cmd/fakedns_cpp/*.cpp cmd/fakedns_cpp/*.h "$SDK_DIR/package/fakedns-lite/src/"
-          cp openwrt/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
+          test -n "$TOOLCHAIN_BIN"
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          export STAGING_DIR="$SDK_DIR/staging_dir"
+          export CXX=mipsel-openwrt-linux-musl-g++
+          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
+
+          # Build against the 25.12 toolchain, not the older 22.03 toolchain.
+          ./deployments/build.sh mipsel_24kc fakedns-lite
+
           mkdir -p "$SDK_DIR/package/fakedns-lite/files"
-          cp openwrt/fakedns-lite/files/* "$SDK_DIR/package/fakedns-lite/files/"
+          cp "bin/mipsel_24kc/fakedns-lite" "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
+          cp openwrt/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          cp openwrt/fakedns-lite/files/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
+          cp openwrt/fakedns-lite/files/fakedns-lite.config "$SDK_DIR/package/fakedns-lite/files/"
 
           cd "$SDK_DIR"
-          make package/fakedns-lite/compile V=s VERSION="$VERSION"
+          make package/fakedns-lite/compile V=s
 
           find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
