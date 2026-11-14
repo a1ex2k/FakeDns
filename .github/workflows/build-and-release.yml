@@ -36,11 +36,11 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: [amd64, arm64, mipsel_24kc]
+        arch: [amd64, arm64, mipsel_24kc, filogic]
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Packaging Tools
         run: |
@@ -54,6 +54,7 @@ jobs:
             zstd
 
       - name: Build and Package
+        if: matrix.arch != 'filogic'
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
           ARCH: ${{ matrix.arch }}
@@ -138,10 +139,49 @@ jobs:
           find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
           test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
 
+      - name: Build OpenWrt 25.12 APK (Filogic: MT7981/MT7986)
+        if: matrix.arch == 'filogic'
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euxo pipefail
+
+          SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
+          SDK_SHA256="1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"
+          SDK_DIR=/tmp/openwrt-sdk-filogic-25.12
+          mkdir -p "$SDK_DIR"
+          wget -qO /tmp/openwrt-sdk-filogic-25.12.tar.zst "$SDK_URL"
+          echo "$SDK_SHA256  /tmp/openwrt-sdk-filogic-25.12.tar.zst" | sha256sum -c -
+          tar --zstd -xf /tmp/openwrt-sdk-filogic-25.12.tar.zst -C "$SDK_DIR" --strip-components=1
+
+          HOST_PATH="$PATH"
+          TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
+          test -n "$TOOLCHAIN_BIN"
+          export PATH="$TOOLCHAIN_BIN:$PATH"
+          export STAGING_DIR="$SDK_DIR/staging_dir"
+          export CXX=aarch64-openwrt-linux-musl-g++
+          export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread"
+
+          ./deployments/build.sh filogic fakedns-lite
+
+          export PATH="$HOST_PATH"
+          unset CXX CXXFLAGS
+
+          mkdir -p "$SDK_DIR/package/fakedns-lite/files"
+          cp bin/filogic/fakedns-lite "$SDK_DIR/package/fakedns-lite/files/fakedns-lite"
+          cp openwrt/fakedns-lite/Makefile "$SDK_DIR/package/fakedns-lite/Makefile"
+          cp openwrt/fakedns-lite/files/fakedns-lite.init "$SDK_DIR/package/fakedns-lite/files/"
+          cp openwrt/fakedns-lite/files/fakedns-lite.config "$SDK_DIR/package/fakedns-lite/files/"
+
+          cd "$SDK_DIR"
+          make package/fakedns-lite/compile V=s
+
+          find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
+          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: packages-${{ matrix.arch }}
+          name: packages-${{ matrix.arch }}${{ (matrix.arch == 'mipsel_24kc' || matrix.arch == 'filogic') && '-openwrt-25.12.6' || '' }}
           path: dist/*
 
   create_release:
@@ -150,13 +190,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: all_packages
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.prepare.outputs.version }}
           name: Release ${{ needs.prepare.outputs.version }}
