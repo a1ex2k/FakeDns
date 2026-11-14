@@ -99,6 +99,7 @@ chmod 0755 "$SCRIPTS_DIR/post-install" "$SCRIPTS_DIR/post-upgrade" "$SCRIPTS_DIR
     --info "maintainer:a1ex2k" \
     --info "depends:nftables kmod-nft-nat libstdcpp6" \
     --script "post-install:$SCRIPTS_DIR/post-install" \
+    --script "post-upgrade:$SCRIPTS_DIR/post-upgrade" \
     --script "pre-deinstall:$SCRIPTS_DIR/pre-deinstall" \
     --files "$BUILD_DIR" \
     --output "$DIST_DIR/${PACKAGE_NAME}-${VERSION}-r1_${PKG_ARCH}.apk"
