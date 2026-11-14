@@ -106,6 +106,7 @@ jobs:
           SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/ramips/mt7621/openwrt-sdk-25.12.6-ramips-mt7621_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
           mkdir -p /tmp/openwrt-sdk-25.12
           wget -qO /tmp/openwrt-sdk-25.12.tar.zst "$SDK_URL"
+          echo "e4e3f25962ddf3ed55207fed456ecd1d6e55f3482c976b3183a640df6ef0adf0  /tmp/openwrt-sdk-25.12.tar.zst" | sha256sum -c -
           tar --zstd -xf /tmp/openwrt-sdk-25.12.tar.zst -C /tmp/openwrt-sdk-25.12 --strip-components=1
 
           SDK_DIR=/tmp/openwrt-sdk-25.12
