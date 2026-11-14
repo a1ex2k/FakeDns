@@ -89,7 +89,7 @@ chmod 0755 "$SCRIPTS_DIR/post-install" "$SCRIPTS_DIR/pre-deinstall"
     --info "origin:FakeDns" \
     --info "description:FakeDNS Core Server with nftables DNAT support" \
     --info "maintainer:a1ex2k" \
-    --info "depends:nftables kmod-nft-nat libstdcpp" \
+    --info "depends:nftables kmod-nft-nat libstdcpp6" \
     --script "post-install:$SCRIPTS_DIR/post-install" \
     --script "pre-deinstall:$SCRIPTS_DIR/pre-deinstall" \
     --files "$BUILD_DIR" \
