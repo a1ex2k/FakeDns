@@ -72,6 +72,14 @@ cat > "$SCRIPTS_DIR/post-install" <<'EOF'
 /etc/init.d/fakedns-lite restart
 EOF
 
+cat > "$SCRIPTS_DIR/post-upgrade" <<'EOF'
+#!/bin/sh
+[ "${IPKG_NO_SCRIPT}" = "1" ] && exit 0
+[ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
+/etc/init.d/fakedns-lite enable
+/etc/init.d/fakedns-lite restart
+EOF
+
 cat > "$SCRIPTS_DIR/pre-deinstall" <<'EOF'
 #!/bin/sh
 [ -s "${IPKG_INSTROOT}/lib/functions.sh" ] || exit 0
@@ -79,7 +87,7 @@ cat > "$SCRIPTS_DIR/pre-deinstall" <<'EOF'
 /etc/init.d/fakedns-lite disable
 EOF
 
-chmod 0755 "$SCRIPTS_DIR/post-install" "$SCRIPTS_DIR/pre-deinstall"
+chmod 0755 "$SCRIPTS_DIR/post-install" "$SCRIPTS_DIR/post-upgrade" "$SCRIPTS_DIR/pre-deinstall"
 
 "$APK_TOOL" mkpkg \
     --info "name:$PACKAGE_NAME" \
