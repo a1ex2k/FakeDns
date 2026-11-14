@@ -104,25 +104,26 @@ jobs:
               echo "::warning::Using default OpenWrt 25.12 Filogic SDK: $OPENWRT_FILOGIC_SDK_URL"
             fi
 
-            mkdir -p /tmp/openwrt-filogiс-sdk
+            SDK_DIR="/tmp/openwrt-filogic-sdk"
+            mkdir -p "$SDK_DIR"
             wget -qO /tmp/openwrt-filogic-sdk.tar.zst "$OPENWRT_FILOGIC_SDK_URL"
-            tar --zstd -xf /tmp/openwrt-filogic-sdk.tar.zst -C /tmp/openwrt-filogic-sdk --strip-components=1
+            tar --zstd -xf /tmp/openwrt-filogic-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
 
-            TOOLCHAIN_BIN="$(find /tmp/openwrt-filogiс-sdk/staging_dir -type d -path "*/toolchain-*/bin" | head -n1)"
+            TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path "*/toolchain-*/bin" | head -n1)"
             if [ -z "$TOOLCHAIN_BIN" ]; then
               echo "::error::OpenWrt 25.12 Filogic SDK toolchain bin directory not found."
               exit 1
             fi
 
             CXX_BIN="$(find "$TOOLCHAIN_BIN" -maxdepth 1 -name '*-g++' | head -n1)"
-            APK_TOOL="/tmp/openwrt-filogiс-sdk/staging_dir/host/bin/apk"
+            APK_TOOL="$SDK_DIR/staging_dir/host/bin/apk"
             if [ -z "$CXX_BIN" ] || [ ! -x "$APK_TOOL" ]; then
               echo "::error::Filogic cross-compiler or OpenWrt APK v3 tool not found in SDK."
               exit 1
             fi
 
             export PATH="$TOOLCHAIN_BIN:$PATH"
-            export STAGING_DIR="/tmp/openwrt-filogiс-sdk/staging_dir"
+            export STAGING_DIR="$SDK_DIR/staging_dir"
             export CXX="$CXX_BIN"
             export CXXFLAGS="-O2 -DNDEBUG -pipe -std=c++17 -pthread -mcpu=cortex-a53"
           fi
