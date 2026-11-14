@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: ./deployments/package_core_apk.sh <arch> <version> <path-to-openwrt-apk-tool>
+# Usage: ./deployments/package_core_apk.sh <build-arch> <version> <path-to-openwrt-apk-tool>
 
 set -euo pipefail
 
@@ -7,10 +7,23 @@ ARCH=${1:-}
 VERSION=${2:-}
 APK_TOOL=${3:-}
 PACKAGE_NAME="fakedns-lite"
-PKG_ARCH="aarch64_cortex-a53"
 
-if [ "$ARCH" != "filogic" ] || [ -z "$VERSION" ] || [ -z "$APK_TOOL" ]; then
-    echo "Usage: $0 filogic <version> <path-to-openwrt-apk-tool>"
+case "$ARCH" in
+    "openwrt_arm64")
+        PKG_ARCH="aarch64_generic"
+        ;;
+    "filogic")
+        PKG_ARCH="aarch64_cortex-a53"
+        ;;
+    *)
+        echo "Error: unsupported OpenWrt 25.12 APK target: $ARCH"
+        echo "Supported targets: openwrt_arm64, filogic"
+        exit 1
+        ;;
+esac
+
+if [ -z "$VERSION" ] || [ -z "$APK_TOOL" ]; then
+    echo "Usage: $0 <build-arch> <version> <path-to-openwrt-apk-tool>"
     exit 1
 fi
 
@@ -46,7 +59,6 @@ sed 's/\r$//' "$INIT_FILE" | sed 's|/etc/init.d/rc.common|/etc/rc.common|g' > "$
 chmod 0755 "$BUILD_DIR/etc/init.d/$PACKAGE_NAME"
 install -m 0644 "$CONFIG_FILE" "$BUILD_DIR/etc/config/$PACKAGE_NAME"
 
-# Preserve the UCI configuration when upgrading or removing the package.
 printf '%s\n' "/etc/config/$PACKAGE_NAME" > "$BUILD_DIR/lib/apk/packages/$PACKAGE_NAME.conffiles"
 
 cat > "$SCRIPTS_DIR/post-install" <<'EOF'
