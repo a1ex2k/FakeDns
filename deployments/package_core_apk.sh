@@ -12,12 +12,15 @@ case "$ARCH" in
     "openwrt_arm64")
         PKG_ARCH="aarch64_generic"
         ;;
+    "openwrt_mipsel_24kc")
+        PKG_ARCH="mipsel_24kc"
+        ;;
     "filogic")
         PKG_ARCH="aarch64_cortex-a53"
         ;;
     *)
         echo "Error: unsupported OpenWrt 25.12 APK target: $ARCH"
-        echo "Supported targets: openwrt_arm64, filogic"
+        echo "Supported targets: openwrt_arm64, openwrt_mipsel_24kc, filogic"
         exit 1
         ;;
 esac
