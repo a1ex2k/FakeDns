@@ -10,8 +10,8 @@ define Package/fakedns-lite
   SECTION:=net
   CATEGORY:=Network
   TITLE:=FakeDNS Core Server
-  DEPENDS:=+libstdcpp +kmod-nft-nat
-  EXTRA_DEPENDS:=nftables
+  DEPENDS:=+libstdcpp
+  EXTRA_DEPENDS:=nftables kmod-nft-nat
 endef
 
 define Package/fakedns-lite/description
