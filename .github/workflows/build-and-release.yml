@@ -145,6 +145,8 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euxo pipefail
+          mkdir -p dist
+          chmod +x deployments/*.sh
 
           SDK_URL="https://downloads.openwrt.org/releases/25.12.6/targets/mediatek/filogic/openwrt-sdk-25.12.6-mediatek-filogic_gcc-14.3.0_musl.Linux-x86_64.tar.zst"
           SDK_SHA256="1c04ac47bdfc361d6aab299eb520d570e368013dedcb8d29cf39dc7168ae642e"
@@ -177,7 +179,8 @@ jobs:
           make package/fakedns-lite/compile V=s
 
           find bin/packages -type f -name "fakedns-lite_*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
-          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)
+          test -n "$(find "$GITHUB_WORKSPACE/dist" -maxdepth 1 -type f -name 'fakedns-lite_*.apk' -print -quit)"
+
       - name: Upload Artifacts
         uses: actions/upload-artifact@v7
         with:
