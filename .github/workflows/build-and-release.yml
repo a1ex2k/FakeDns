@@ -155,6 +155,20 @@ jobs:
           echo "$SDK_SHA256  /tmp/openwrt-sdk.tar.zst" | sha256sum -c -
           tar --zstd -xf /tmp/openwrt-sdk.tar.zst -C "$SDK_DIR" --strip-components=1
 
+          # The SDK omits these base-package definitions; restore the matching
+          # 25.12.6 definitions so nftables-json and its dependencies resolve.
+          OPENWRT_SRC="/tmp/openwrt-source"
+          git clone --depth 1 --branch v25.12.6 https://github.com/openwrt/openwrt.git "$OPENWRT_SRC"
+          for package in \
+            package/network/utils/nftables \
+            package/libs/libnftnl \
+            package/libs/jansson \
+            package/libs/libmnl; do
+            rm -rf "$SDK_DIR/$package"
+            mkdir -p "$(dirname "$SDK_DIR/$package")"
+            cp -a "$OPENWRT_SRC/$package" "$SDK_DIR/$package"
+          done
+
           HOST_PATH="$PATH"
           TOOLCHAIN_BIN="$(find "$SDK_DIR/staging_dir" -type d -path '*/toolchain-*/bin' | head -n1)"
           test -n "$TOOLCHAIN_BIN"
@@ -174,8 +188,14 @@ jobs:
           install -m 0644 deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
-          # SDK .config is intentionally absent; create a non-interactive default
-          # config so the package build does not fall back to menuconfig.
+          # Start with a minimal config: the SDK defaults to building all
+          # userspace packages and kernel modules when .config is absent.
+          cat > .config <<'EOF'
+          # CONFIG_ALL is not set
+          # CONFIG_ALL_KMODS is not set
+          # CONFIG_ALL_NONSHARED is not set
+          CONFIG_PACKAGE_fakedns-lite=m
+          EOF
           make defconfig
           make package/fakedns-lite/compile V=s
 
