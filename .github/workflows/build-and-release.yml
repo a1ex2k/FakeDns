@@ -81,7 +81,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y wget xz-utils
-
+          
       - name: Build OpenWrt 22.03 IPK (MT7621)
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -174,6 +174,9 @@ jobs:
           install -m 0644 deployments/fakedns-lite/fakedns-lite.uciconf "$SDK_DIR/package/fakedns-lite/files/fakedns-lite.config"
 
           cd "$SDK_DIR"
+          # The SDK archive may not contain a usable .config. Generate its
+          # non-interactive default before compiling; otherwise make tries menuconfig.
+          make defconfig
           make package/fakedns-lite/compile V=s
 
           find bin/packages -type f -name 'fakedns-lite_*.apk' -exec cp {} "$GITHUB_WORKSPACE/dist/" \;
